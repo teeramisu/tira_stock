@@ -1,0 +1,38 @@
+# 虚拟环境与 Python
+.venv/
+venv/
+env/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 环境与敏感配置（勿提交真实密码）
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# 构建与分发
+dist/
+build/
+*.egg-info/
+*.egg
+
+# 日志与临时
+*.log
+tmp/
+temp/
