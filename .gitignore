@@ -36,3 +36,6 @@ build/
 *.log
 tmp/
 temp/
+
+# 本地 OHLCV 缓存（按天复用，不提交）
+.ohlcv_cache/

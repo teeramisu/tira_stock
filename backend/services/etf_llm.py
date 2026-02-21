@@ -1,8 +1,12 @@
 """ETF 大模型评分：用 tiiuae/Falcon-H1R-7B 根据五年表现输出 0-100 分及理由。"""
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Optional
+
+# socks 代理会导致 transformers/huggingface_hub 报 Unknown scheme，加载模型时暂时取消代理
+_PROXY_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
 
 from .data import fetch_ohlcv
 from backtest.engine import run_backtest, STRATEGY_BUY_HOLD
@@ -12,9 +16,20 @@ _llm_pipeline = None
 _llm_loaded = False
 _llm_error: Optional[str] = None
 
+# 默认从 Hugging Face 拉取；若网络不可达，可先离线下载再设置环境变量走本地
 MODEL_ID = "tiiuae/Falcon-H1R-7B"
+# 本地模型目录：设置 FALCON_H1R_7B_PATH=/path/to/Falcon-H1R-7B 则不再访问网络（目录内需含 config.json、*.safetensors 等）
+_LOCAL_MODEL_ENV = "FALCON_H1R_7B_PATH"
 MAX_NEW_TOKENS = 256
 INFERENCE_TIMEOUT = 120
+
+
+def _get_model_path() -> str:
+    """优先使用本地路径（避免 Network unreachable），否则用 MODEL_ID。"""
+    local = os.environ.get(_LOCAL_MODEL_ENV, "").strip()
+    if local and os.path.isdir(local):
+        return local
+    return MODEL_ID
 
 
 def _load_pipeline():
@@ -23,16 +38,40 @@ def _load_pipeline():
         return _llm_pipeline, _llm_error
     _llm_loaded = True
     try:
+        import regex  # transformers 依赖，需先安装
+    except ImportError:
+        _llm_error = (
+            "缺少依赖 regex。请在启动后端的同一环境中执行: pip install regex 或 pip install -r requirements.txt"
+        )
+        return _llm_pipeline, _llm_error
+    model_path = _get_model_path()
+    saved_proxy = {k: os.environ.pop(k, None) for k in _PROXY_KEYS}
+    try:
         from transformers import pipeline as hf_pipeline
         _llm_pipeline = hf_pipeline(
             "text-generation",
-            model=MODEL_ID,
-            model_kwargs={"trust_remote_code": True},
+            model=model_path,
+            trust_remote_code=True,
             max_new_tokens=MAX_NEW_TOKENS,
         )
     except Exception as e:
-        _llm_error = str(e)
+        err_msg = str(e)
+        if "GGUF_CONFIG_MAPPING" in err_msg or "transformers.integrations" in err_msg:
+            _llm_error = (
+                "transformers 与 accelerate 版本不兼容。请升级：pip install -U 'transformers>=4.46.0' 'accelerate>=0.33.0'"
+            )
+        elif any(x in err_msg for x in ("Network is unreachable", "Errno 101", "client has been closed")):
+            _llm_error = (
+                "无法访问 Hugging Face 或连接已关闭。请先离线下载模型并设置环境变量："
+                " export FALCON_H1R_7B_PATH=/path/to/Falcon-H1R-7B （目录内需含 config.json、*.safetensors 等）"
+            )
+        else:
+            _llm_error = err_msg
         _llm_pipeline = None
+    finally:
+        for k, v in saved_proxy.items():
+            if v is not None:
+                os.environ[k] = v
     return _llm_pipeline, _llm_error
 
 

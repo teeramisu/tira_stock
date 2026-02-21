@@ -1,3 +1,4 @@
+# ---------- 核心（回测、API、数据库、行情） ----------
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 yfinance>=0.2.36
@@ -8,6 +9,14 @@ sqlalchemy[asyncio]>=2.0.0
 asyncpg>=0.29.0
 alembic>=1.13.0
 requests>=2.31.0
+regex>=2023.0.0
 
-# 可选：ETF 大模型评分（tiiuae/Falcon-H1R-7B），未安装时 /api/etf/llm-score 返回 503
-# pip install transformers torch accelerate
+# ---------- 备用行情：Yahoo 失败时用 Stooq 拉取美股（data_sources.py） ----------
+pandas-datareader>=0.10.0
+
+# ---------- 可选：ETF 大模型评分（etf_llm.py，tiiuae/Falcon-H1R-7B） ----------
+# 未安装时 POST /api/etf/llm-score 返回 503。需与 accelerate 版本匹配，避免 GGUF_CONFIG_MAPPING 等导入错误
+# pip install 'transformers>=4.46.0' 'accelerate>=0.33.0' torch
+# transformers>=4.46.0
+# accelerate>=0.33.0
+# torch>=2.0.0
