@@ -39,3 +39,6 @@ temp/
 
 # 本地 OHLCV 缓存（按天复用，不提交）
 .ohlcv_cache/
+
+# OpenClaw 配置（本地配置）
+~/.openclaw/
