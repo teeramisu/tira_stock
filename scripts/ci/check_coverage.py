@@ -49,12 +49,14 @@ def main() -> int:
     baseline = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
     base_total = float(baseline.get("total", total))
 
-    print(f"整体覆盖率：{total:.1f}%   基线：{base_total:.1f}%   变化：{total - base_total:+.1f}pp")
+    mode = baseline.get("mode", "unknown")
+    print(f"整体覆盖率：{total:.1f}%   基线：{base_total:.1f}% ({mode})   变化：{total - base_total:+.1f}pp")
 
     if args.write:
         BASELINE.parent.mkdir(parents=True, exist_ok=True)
         BASELINE.write_text(
-            json.dumps({"total": round(total, 2)}, indent=2) + "\n", encoding="utf-8"
+            json.dumps({"total": round(total, 2), "mode": "ci"}, indent=2) + "\n",
+            encoding="utf-8",
         )
         print(f"✅ 基线已更新 → {BASELINE.relative_to(ROOT)}")
         return 0

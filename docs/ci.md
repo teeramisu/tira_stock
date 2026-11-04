@@ -109,7 +109,8 @@ pytest backend/tests --cov=backend --cov-report=json:coverage.json
 python scripts/ci/check_coverage.py --report coverage.json
 ```
 
-- 基线 37.5% 记录在 `ci/coverage-baseline.json`；
+- 基线 **34.7%**，按「CI 口径」记录（干净 checkout 无 `data/`，32 个 `requires_data` 测试被跳过）；
+  本地有数据时约 37.5%，只会更高，不会误报；
 - 下降超过 0.2pp → 失败（容忍跨环境抖动）；
 - 失败时打印覆盖率最低的 12 个文件，agent 知道该补哪里。
 
