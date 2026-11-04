@@ -4,9 +4,10 @@ name: CI Guard
 # pull_request_target 会在默认分支的上下文里运行，PR 里的代码一行都不会被执行。
 
 on:
+  # 不限 base 分支：stacked PR（base 不是 main）也要检查，
+  # 否则「先合到中间分支」就能在守卫眼皮外改 CI 脚本。
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    branches: [main]
 
 permissions:
   contents: read
