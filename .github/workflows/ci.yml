@@ -160,6 +160,38 @@ jobs:
           echo "目标文件: $files"
           python -m pytest $files -q --durations=10 -p no:cacheprovider
 
+  # ---------------------------------------------------------------- 2.5 覆盖率
+  coverage:
+    name: 覆盖率 ratchet
+    needs: plan
+    if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+
+      - name: 跑测试并统计覆盖率
+        run: |
+          python -m pytest backend/tests -q -p no:cacheprovider \
+            --cov=backend --cov-report=json:coverage.json --cov-report=term:skip-covered
+
+      - name: 覆盖率只许升
+        run: python scripts/ci/check_coverage.py --report coverage.json
+
+      - name: 保存覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json
+          path: coverage.json
+          retention-days: 14
+
   # ---------------------------------------------------------------- 3. 前端
   frontend:
     name: 前端语法与资源
@@ -259,7 +291,7 @@ jobs:
   gate:
     name: CI 汇总
     if: always()
-    needs: [plan, static, style, tests, frontend, commits, pr-meta, pr-scope, pr-size]
+    needs: [plan, static, style, tests, coverage, frontend, commits, pr-meta, pr-scope, pr-size]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总各层结果

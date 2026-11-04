@@ -26,6 +26,7 @@
 | 静态 | 分层边界（API 层 ↔ 核心库） | ~2s | ✅ |
 | 静态 | **Google 风格（仅新增行）** | ~5s | ✅ |
 | 测试 | 4 个分片并行（macro-discovery / engine / portfolio / marketdata） | ~30s | ✅ |
+| 测试 | **覆盖率 ratchet**（整体只许升） | ~25s | ✅ |
 | 前端 | `node --check` + 内联脚本 + 资源引用存在性 | ~3s | ✅ |
 | 元信息 | 分支命名 + 提交信息（Conventional Commits） | ~1s | ✅ |
 | 元信息 | PR 标题 Conventional Commits、描述长度与结构 | ~1s | ✅ |
@@ -100,6 +101,20 @@ python scripts/ci/check_style.py --base origin/main --head HEAD
 | frontend | `frontend/` | frontend |
 | ci | `.github/`、`ci/`、`scripts/ci/` | **全部**（改 CI 本身必须验证整条链路） |
 | docs | `docs/`、`README*` | 都不触发（只跑 pr-meta） |
+
+## 三之二、覆盖率 ratchet
+
+```bash
+pytest backend/tests --cov=backend --cov-report=json:coverage.json
+python scripts/ci/check_coverage.py --report coverage.json
+```
+
+- 基线 37.5% 记录在 `ci/coverage-baseline.json`；
+- 下降超过 0.2pp → 失败（容忍跨环境抖动）；
+- 失败时打印覆盖率最低的 12 个文件，agent 知道该补哪里。
+
+它挡不住「断言等于实现」的假测试，但能挡住「一个断言都没有」。
+真正的一致性要靠 spec 派生的测试，见 [agent-ci.md](agent-ci.md) 第七节。
 
 ## 四、债务 ratchet：不要求一次清零，但不许变多
 

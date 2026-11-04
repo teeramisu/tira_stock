@@ -13,32 +13,34 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 ROOT="$(pwd)"
 PY="${PYTHON:-$ROOT/.venv/bin/python}"
 QUICK=0
+FULL=0
 [[ "${1:-}" == "--quick" ]] && QUICK=1
+[[ "${1:-}" == "--full" ]] && FULL=1
 
 have() { command -v "$1" >/dev/null 2>&1; }
 step() { printf '\n\033[1;36m▶ %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m✔ %s\033[0m\n' "$1"; }
 
-step "1/10 静态分析（阻断规则 E9/F63/F7/F82）"
+step "静态分析（阻断规则 E9/F63/F7/F82）"
 "$PY" -m ruff check backend scripts
 ok "ruff 阻断规则通过"
 
-step "2/10 Lint 债务 ratchet"
+step "Lint 债务 ratchet"
 "$PY" scripts/ci/lint_ratchet.py
 
-step "3/10 仓库卫生（大文件 / 本地数据 / 密钥文件）"
+step "仓库卫生（大文件 / 本地数据 / 密钥文件）"
 "$PY" scripts/ci/check_hygiene.py
 
-step "4/10 密钥泄露扫描"
+step "密钥泄露扫描"
 "$PY" scripts/ci/check_secrets.py
 
-step "5/10 分层边界"
+step "分层边界"
 "$PY" scripts/ci/check_layers.py
 
-step "6/10 前端语法与资源引用"
+step "前端语法与资源引用"
 "$PY" scripts/ci/check_frontend.py
 
-step "7/10 测试分片"
+step "测试分片"
 "$PY" scripts/ci/shard_tests.py --validate
 if [[ $QUICK -eq 1 ]]; then
   "$PY" -m pytest $(scripts/ci/shard_tests.py --list macro-discovery | tr '\n' ' ') -q
@@ -46,7 +48,7 @@ else
   "$PY" -m pytest backend/tests -q
 fi
 
-step "8/10 分支命名与提交信息"
+step "分支命名与提交信息"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 "$PY" scripts/ci/check_commits.py --branch "$BRANCH"
 if git rev-parse --verify --quiet origin/main >/dev/null; then
@@ -56,7 +58,7 @@ else
   echo "（未找到 origin/main，跳过提交范围检查）"
 fi
 
-step "9/10 PR 范围与体量（对比 origin/main）"
+step "PR 范围与体量（对比 origin/main）"
 if git rev-parse --verify --quiet origin/main >/dev/null; then
   "$PY" scripts/ci/check_pr_scope.py --base origin/main --head HEAD
   "$PY" scripts/ci/check_pr_size.py --base origin/main --head HEAD
@@ -64,7 +66,14 @@ else
   echo "（未找到 origin/main，跳过）"
 fi
 
-step "10/10 Google 风格（仅新增行）"
+step "Google 风格（仅新增行）"
 "$PY" scripts/ci/check_style.py --base origin/main --head HEAD
+
+if [[ $FULL -eq 1 ]]; then
+  step "覆盖率 ratchet（--full 才跑，约 30s）"
+  "$PY" -m pytest backend/tests -q -p no:cacheprovider \
+    --cov=backend --cov-report=json:coverage.json >/dev/null
+  "$PY" scripts/ci/check_coverage.py --report coverage.json | tail -3
+fi
 
 printf '\n\033[1;32m全部通过 —— 可以推送\033[0m\n'
