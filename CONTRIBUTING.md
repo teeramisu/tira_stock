@@ -186,6 +186,18 @@ CI 要求 ≥ 80 字符且有结构。建议四段：
 | 提交本身已清晰 | **Rebase and merge** |
 | 大功能需要保留分支结构 | Merge commit |
 
+## 五之一、身份分离（agent 与人不共用 token）
+
+门禁要成立，前提是「被考核方」不能自己给自己放行：
+
+| 身份 | 环境变量 | 权限 | 用途 |
+|---|---|---|---|
+| 人 | `GITHUB_TOKEN` | 含 `Issues` / `Administration` | 贴放行标签、改仓库设置 |
+| agent | `AGENT_GITHUB_TOKEN` | 仅 `Contents` + `Pull requests` + `Metadata` | 推分支、开 PR、开 auto-merge |
+
+给自动化脚本加 token 时，按 `AGENT_GITHUB_TOKEN → GITHUB_TOKEN` 顺序取，
+回退到人的 token 会打印警告。创建与验证步骤见 [docs/agent-token.md](docs/agent-token.md)。
+
 ## 五之二、受保护路径（CI 脚本 / 测试 / 依赖）
 
 以下路径的改动会被 `受保护路径守卫` 拦下，需要人工给 PR 加 `allow-guard-change` 标签：
