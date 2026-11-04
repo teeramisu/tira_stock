@@ -50,6 +50,10 @@ steps:
 
 命中 → 失败，除非 PR 有 `allow-guard-change` 标签。
 
+> 触发器**不限制 base 分支**：stacked PR（比如 `test/xxx` → `ci/yyy`）同样会检查。
+> 早期版本写了 `branches: [main]`，导致中间分支上的 PR 完全不触发守卫 ——
+> 虽然最终还是要在「合入 main」那个 PR 上过一遍，但等于放弃了早期预警。
+
 ### 例外：纯新增的测试改动自动放行
 
 ```json
