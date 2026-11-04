@@ -37,6 +37,23 @@ git push -u origin feat/macro-provinces
 
 > 由 `scripts/ci/check_commits.py --branch` 在 CI 中校验。
 
+## 一之二、代码风格（Google Python Style Guide）
+
+新代码必须符合 [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)：
+
+- 命名：`snake_case` 函数/变量、`CapWords` 类、`UPPER_CASE` 常量
+- 导入：stdlib → 第三方 → 本地，分组之间空行（`ruff --select I`）
+- docstring：`convention = "google"`，公开函数写 Args / Returns / Raises
+- 不用可变默认参数（`def f(x=[])`）、不用 `l`/`O` 这类歧义单字母名
+- 行宽 100
+
+**只对新增行生效**，老代码不要求重排：
+
+```bash
+python scripts/ci/check_style.py --base origin/main --head HEAD
+ruff check <file> --config ci/style-ruff.toml --fix   # 能自动修的
+```
+
 ## 二、提交信息：Conventional Commits
 
 ```

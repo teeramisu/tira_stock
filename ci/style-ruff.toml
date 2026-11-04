@@ -1,0 +1,43 @@
+# Google Python Style Guide 对应的 ruff 配置（只用于「新增代码」检查）
+#
+# 与仓库根 ruff.toml 的区别：
+#   - 行宽 100（Google 是 80，但本仓库前端/表格字符串较多，100 是可执行的折中）
+#   - 打开命名、docstring、import 顺序、bugbear 等风格族
+#   - 只对「本次新增的行」生效（scripts/ci/check_style.py），老代码债务不受影响
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",    # pycodestyle error
+    "W",    # pycodestyle warning
+    "F",    # pyflakes（未使用导入/变量、未定义名）
+    "I",    # isort（导入分组与顺序）
+    "N",    # pep8-naming（Google 用 snake_case / CapWords）
+    "D",    # pydocstyle
+    "B",    # bugbear（可变默认参数、循环变量捕获等）
+    "C4",   # 推导式
+    "PIE",  # 反模式
+    "RET",  # 返回语句
+    "SIM",  # 可简化写法
+]
+
+ignore = [
+    "D203",  # 与 D211 冲突
+    "D213",  # 与 D212 冲突
+    "D100",  # 模块级 docstring：脚本类文件不强制
+    "D104",  # 包级 docstring
+    "E501",  # 行宽由 check_style.py 的 diff 判定，避免整文件重排
+    "D415",  # 中文 docstring 首行通常不加英文句号
+    "D400",
+]
+
+[lint.pydocstyle]
+# Google 风格：Args / Returns / Raises
+convention = "google"
+
+[lint.per-file-ignores]
+# 测试不强制 docstring 与命名（AAA 风格常写长函数名）
+"backend/tests/**" = ["D", "N", "E731"]
+"scripts/**" = ["D100", "D103"]

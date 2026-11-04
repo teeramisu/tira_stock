@@ -24,6 +24,7 @@
 | 静态 | 仓库卫生（大文件/本地数据/密钥文件） | ~2s | ✅ |
 | 静态 | 密钥泄露扫描 | ~3s | ✅ |
 | 静态 | 分层边界（API 层 ↔ 核心库） | ~2s | ✅ |
+| 静态 | **Google 风格（仅新增行）** | ~5s | ✅ |
 | 测试 | 4 个分片并行（macro-discovery / engine / portfolio / marketdata） | ~30s | ✅ |
 | 前端 | `node --check` + 内联脚本 + 资源引用存在性 | ~3s | ✅ |
 | 元信息 | 分支命名 + 提交信息（Conventional Commits） | ~1s | ✅ |
@@ -61,6 +62,33 @@ scripts/git/install_hooks.sh --with-pre-push # 追加 push 前 quick verify
 ```
 
 完整规则见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+
+## 二之三、Google 风格：新账不欠，旧债不动
+
+仓库有近两千条历史风格问题，一次性 `ruff format` 全仓会让 review 失效，也容易引入回归。
+所以采用**增量判定**：
+
+```bash
+python scripts/ci/check_style.py --base origin/main --head HEAD
+```
+
+1. 用 `git diff -U0` 解析出本次**新增的行区间**；
+2. 用 `ci/style-ruff.toml`（Google 风格规则集）跑 ruff；
+3. 只保留落在新增行上的问题 → 有则失败。
+
+| 规则 | 来源 | 说明 |
+|---|---|---|
+| `E` `W` | pycodestyle | 基本格式 |
+| `F` | pyflakes | 未使用导入/变量、未定义名 |
+| `I` | isort | 导入分组与顺序 |
+| `N` | pep8-naming | Google 用 `snake_case` / `CapWords` |
+| `D` | pydocstyle（`convention = "google"`） | docstring 结构，Args/Returns/Raises |
+| `B` | bugbear | 可变默认参数、循环变量捕获 |
+| `C4` `PIE` `RET` `SIM` | 简化与反模式 | 同义反复、可合并的返回 |
+
+行宽取 100（Google 是 80，本仓库表格/中文串较多，100 是可执行折中）。
+
+> 好处：agent 新增的代码从第一行起就合规，而不用先还清历史债。
 
 ## 三、变更面过滤
 
