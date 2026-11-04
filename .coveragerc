@@ -1,0 +1,22 @@
+[run]
+# 只统计后端业务代码；测试、脚本、迁移不入分母
+source = backend
+branch = False
+omit =
+    backend/tests/*
+    backend/**/__pycache__/*
+    backend/alembic/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    \.\.\.
+precision = 1
+show_missing = False
+skip_empty = True
+
+[html]
+directory = htmlcov

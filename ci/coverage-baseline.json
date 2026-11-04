@@ -1,0 +1,5 @@
+{
+  "total": 34.7,
+  "mode": "ci",
+  "comment": "按 CI 口径记录：干净 checkout 无 data/，32 个 requires_data 测试被跳过。本地有数据时覆盖率更高（约 37.5%），不会触发 ratchet。"
+}
