@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from macro.models import SERIES, MacroObservation, RawTable  # noqa: E402
-from macro.provinces import RegionObservation  # noqa: E402
+from macro.provinces import RegionObservation, parse_province_payload  # noqa: E402
 from macro.parsers import (  # noqa: E402
     normalize_nbs_fai,
     normalize_nbs_pmi,
@@ -253,6 +253,58 @@ class DeriveAnalysisTest(unittest.TestCase):
         self.assertIn("growth", {x["key"] for x in analysis["cn"]["signals"]})
         self.assertTrue(analysis["cn"]["outlook"]["stance"])
         self.assertTrue(analysis["cn"]["commentary"])
+
+
+class ProvincePayloadParseTest(unittest.TestCase):
+    """NBS 分省接口 payload 解析（纯函数，不触网）。"""
+
+    META = {"name": "GDP 总量", "unit": "亿元", "transform": "level"}
+    META_RATE = {"name": "GDP 实际增速", "unit": "%", "transform": "index_minus_100"}
+
+    def test_parses_year_and_value(self):
+        payload = {"data": [{"name": "2025年", "values": [{"value": "145846.8"}]}]}
+        rows = parse_province_payload(payload, "gdp_total", self.META, "广东省", "440000000000")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].period, date(2025, 12, 31))
+        self.assertEqual(rows[0].value, 145846.8)
+        self.assertEqual(rows[0].unit, "亿元")
+        self.assertEqual(rows[0].region_name, "广东省")
+
+    def test_strips_thousand_separators(self):
+        payload = {"data": [{"name": "2025年", "values": [{"value": "1,234,567"}]}]}
+        rows = parse_province_payload(payload, "gdp_total", self.META, "江苏省", "320000000000")
+        self.assertEqual(rows[0].value, 1234567.0)
+
+    def test_skips_placeholder_and_invalid_values(self):
+        values = [{"value": "-"}, {"value": "—"}, {"value": ""}, {"value": None}, {"value": "n/a"}]
+        payload = {"data": [{"name": "2025年", "values": values}]}
+        rows = parse_province_payload(payload, "gdp_total", self.META, "山东省", "370000000000")
+        self.assertEqual(rows, [])
+
+    def test_skips_unparsable_year(self):
+        payload = {"data": [{"name": "全国", "values": [{"value": "1"}]}]}
+        self.assertEqual(
+            parse_province_payload(payload, "gdp_total", self.META, "北京市", "110000000000"), []
+        )
+
+    def test_index_transform_subtracts_100(self):
+        payload = {"data": [{"name": "2025年", "values": [{"value": "105.3"}]}]}
+        rows = parse_province_payload(
+            payload, "gdp_real_growth", self.META_RATE, "西藏自治区", "540000000000"
+        )
+        self.assertAlmostEqual(rows[0].value, 5.3, places=4)
+        self.assertEqual(rows[0].unit, "%")
+
+    def test_empty_payload_returns_empty_list(self):
+        self.assertEqual(
+            parse_province_payload({}, "gdp_total", self.META, "广东省", "440000000000"), []
+        )
+        self.assertEqual(
+            parse_province_payload(
+                {"data": None}, "gdp_total", self.META, "广东省", "440000000000"
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

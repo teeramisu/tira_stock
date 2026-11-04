@@ -118,14 +118,36 @@ def _fetch_one(indicator_id: str, meta: dict, province: str, code: str, dts: str
     if payload is None:
         return indicator_id, [], f"{indicator_id}/{province}: {last_err}"
 
+    return indicator_id, parse_province_payload(payload, indicator_id, meta, province, code), None
+
+
+def parse_province_payload(
+    payload: dict,
+    indicator_id: str,
+    meta: dict,
+    province: str,
+    code: str,
+) -> list[RegionObservation]:
+    """解析国家统计局分省接口返回的数据。
+
+    Args:
+        payload: ``stream/esData`` 返回的 JSON 对象。
+        indicator_id: 指标标识，如 ``gdp_total``。
+        meta: ``INDICATORS`` 中的指标元数据（含 name / unit / transform）。
+        province: 省份名称。
+        code: 省份行政区划代码。
+
+    Returns:
+        解析出的观测列表；年份或数值不可解析的条目会被跳过。
+    """
     out: list[RegionObservation] = []
-    for item in payload.get("data", []):
+    for item in payload.get("data", []) or []:
         year_text = str(item.get("name") or "")
         try:
             year = int(year_text[:4])
         except ValueError:
             continue
-        for val in item.get("values", []):
+        for val in item.get("values", []) or []:
             raw = val.get("value")
             try:
                 value = float(str(raw).replace(",", "")) if raw not in (None, "", "-", "—") else None
@@ -136,13 +158,17 @@ def _fetch_one(indicator_id: str, meta: dict, province: str, code: str, dts: str
             if meta["transform"] == "index_minus_100":
                 value -= 100.0
             out.append(RegionObservation(
-                indicator_id=indicator_id, indicator_name=meta["name"],
-                region_code=code, region_name=province,
-                period=date(year, 12, 31), value=round(value, 4), unit=meta["unit"],
+                indicator_id=indicator_id,
+                indicator_name=meta["name"],
+                region_code=code,
+                region_name=province,
+                period=date(year, 12, 31),
+                value=round(value, 4),
+                unit=meta["unit"],
                 source_url=BASE + "/stream/esData",
                 fetched_at=datetime.now().isoformat(timespec="seconds"),
             ))
-    return indicator_id, out, None
+    return out
 
 
 def fetch_province_data(
