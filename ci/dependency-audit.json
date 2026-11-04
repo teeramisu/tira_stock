@@ -1,0 +1,10 @@
+{
+  "_comment": "已知漏洞的临时豁免清单。每条必须写清原因与到期日，到期后自动失效（CI 报错提醒）。",
+  "_schema": {
+    "id": "GHSA-xxxx / CVE-xxxx / PYSEC-xxxx",
+    "package": "包名",
+    "reason": "为什么暂时可以接受",
+    "expires": "YYYY-MM-DD，到期后需要重新评估或升级"
+  },
+  "allow": []
+}

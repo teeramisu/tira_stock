@@ -35,6 +35,7 @@ jobs:
       backend: ${{ steps.areas.outputs.backend }}
       frontend: ${{ steps.areas.outputs.frontend }}
       ci: ${{ steps.areas.outputs.ci }}
+      deps: ${{ steps.areas.outputs.deps }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +58,7 @@ jobs:
             base="HEAD~1"
           fi
           python scripts/ci/changed_areas.py --base "$base" | tee /tmp/areas.txt
-          grep -E '^(backend|frontend|ci|count)=' /tmp/areas.txt >> "$GITHUB_OUTPUT"
+          grep -E '^(backend|frontend|ci|deps|count)=' /tmp/areas.txt >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------- 1. 静态层
   static:
@@ -196,6 +197,31 @@ jobs:
           path: coverage.json
           retention-days: 14
 
+  # ---------------------------------------------------------------- 2.8 依赖审计
+  dependencies:
+    name: 依赖漏洞审计
+    needs: plan
+    if: needs.plan.outputs.deps == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: 安装 pip-audit
+        run: pip install pip-audit
+      - name: 审计 requirements-ci.txt
+        run: python scripts/ci/check_dependencies.py --requirements requirements-ci.txt
+      - name: 审计 requirements.txt
+        if: always()
+        run: |
+          if [[ -f requirements.txt ]]; then
+            python scripts/ci/check_dependencies.py --requirements requirements.txt || true
+          fi
+
   # ---------------------------------------------------------------- 3. 前端
   frontend:
     name: 前端语法与资源
@@ -295,7 +321,7 @@ jobs:
   gate:
     name: CI 汇总
     if: always()
-    needs: [plan, static, style, tests, coverage, frontend, commits, pr-meta, pr-scope, pr-size]
+    needs: [plan, static, style, tests, coverage, dependencies, frontend, commits, pr-meta, pr-scope, pr-size]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总各层结果

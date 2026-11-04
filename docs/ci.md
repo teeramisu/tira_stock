@@ -117,6 +117,26 @@ python scripts/ci/check_coverage.py --report coverage.json
 它挡不住「断言等于实现」的假测试，但能挡住「一个断言都没有」。
 真正的一致性要靠 spec 派生的测试，见 [agent-ci.md](agent-ci.md) 第七节。
 
+## 三之三、依赖漏洞审计
+
+agent 引依赖最容易出事：typosquat 包、已知 RCE 版本的工具库，都会直接进生产路径。
+
+```bash
+python scripts/ci/check_dependencies.py --requirements requirements-ci.txt
+```
+
+| 设计 | 原因 |
+|---|---|
+| 只在 `requirements*` 变更时跑 | 漏洞库每天更新，否则每周都有 PR 因上游新披露而红 |
+| 豁免要有到期日 | `ci/dependency-audit.json` 的 `expires` 过期即失效，避免「加白名单就忘」 |
+| 当前基线 0 条 | 71 个依赖无已知漏洞，任何新增都会被视为回归 |
+
+豁免条目格式：
+
+```json
+{ "id": "GHSA-xxxx", "package": "foo", "reason": "仅本地脚本使用，不暴露网络", "expires": "2026-12-31" }
+```
+
 ## 四、债务 ratchet：不要求一次清零，但不许变多
 
 仓库历史债务：`E` 225、`W` 104、`F` 181、`I` 173、`B` 91、`UP` 518、`SIM` 48。

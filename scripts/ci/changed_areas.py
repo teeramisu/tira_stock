@@ -20,6 +20,7 @@ RULES: dict[str, tuple[str, ...]] = {
     ),
     "frontend": ("frontend/",),
     "ci": (".github/", "ci/", "scripts/ci/"),
+    "deps": ("requirements", "requirements-ci"),
     "docs": ("docs/", "README", "DEPLOY_"),
 }
 
