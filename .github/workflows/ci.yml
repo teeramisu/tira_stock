@@ -261,14 +261,17 @@ jobs:
       - name: 启动本地服务
         run: |
           set -euo pipefail
-          python -m uvicorn main:app --app-dir backend/app --host 127.0.0.1 --port 8000 &
+          python -m uvicorn main:app --app-dir backend/app --host 127.0.0.1 --port 8000 \
+            > /tmp/uvicorn.log 2>&1 &
           for i in $(seq 1 40); do
             if curl -fsS -o /dev/null http://127.0.0.1:8000/; then
               echo "服务已就绪（${i}s）"; exit 0
             fi
             sleep 1
           done
-          echo "❌ 服务启动超时"; tail -50 /tmp/uvicorn.log || true; exit 1
+          echo "❌ 服务启动超时（日志如下）"
+          tail -50 /tmp/uvicorn.log || true
+          exit 1
 
       - name: 截图（桌面 + 移动端）
         run: python scripts/ci/frontend_screenshots.py --out artifacts/screenshots
