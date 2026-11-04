@@ -206,6 +206,12 @@ scripts/ci/check_layers.py   分层边界
 scripts/ci/check_frontend.py 前端语法与资源
 ```
 
+## 十之三、受保护路径守卫
+
+允许 agent 自主合并的前提是「它改不动判分标准」：
+`pull_request_target` + base 分支脚本 + 人工标签。
+详见 [protected-paths.md](protected-paths.md)。
+
 ## 十一、仓库设置（已实测）
 
 `main` 使用 **Ruleset**（不是传统的 Branch protection rule），实测有效的配置：
