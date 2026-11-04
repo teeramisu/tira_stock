@@ -19,6 +19,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -33,9 +35,7 @@ PREFIXES = ("105", "106", "107")
 _PREFIX_CACHE: dict[str, str] = {}
 
 
-def _normalize(df) -> "pd.DataFrame":
-    import pandas as pd
-
+def _normalize(df) -> pd.DataFrame:
     colmap = {
         "日期": "date", "开盘": "open", "收盘": "close", "最高": "high", "最低": "low",
         "成交量": "volume", "成交额": "amount",
