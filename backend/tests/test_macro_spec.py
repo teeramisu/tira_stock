@@ -148,6 +148,22 @@ class MacroSpecTest(unittest.TestCase):
         )
         self.assertEqual(build_analysis(payload(*items))["cn"]["as_of"], "2026-09-30")
 
+    def test_central_bank_assets_tolerates_string_values(self):
+        """SC-10：接口返回字符串数值时不得崩溃，且同比按数值计算。"""
+        items = (
+            series(
+                "cn_cb_total_assets",
+                "505003.0",
+                observations=[["2025-09-30", 490000.0], ["2026-09-30", "505003.0"]],
+            ),
+            series("cn_shibor_3m", 1.5),
+        )
+        analysis = build_analysis(payload(*items))["cn"]
+        detail = {s["key"]: s["detail"] for s in analysis["signals"]}["liquidity"]
+        self.assertIn("央行总资产同比", detail)
+        self.assertIn("3.1%", detail)   # (505003/490000-1)*100 ≈ 3.06 → 3.1
+
+
     def test_us_and_jp_sections_use_prefix(self):
         """SC-9：按 series_id 前缀决定生成哪几个国家，互不干扰。"""
         data = {

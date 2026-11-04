@@ -89,8 +89,11 @@ def _china_analysis(series: Dict[str, dict]) -> dict:
     cb_yoy = None
     if cb_series.get("observations"):
         base = _year_ago_value(cb_series["observations"])
-        if base:
-            cb_yoy = (cb_series["latest"] / base - 1) * 100
+        # latest 可能是字符串（接口原样返回），必须走 _latest 做类型转换，
+        # 否则这里会 TypeError: str / float
+        latest_cb = _latest(series, "cn_cb_total_assets")
+        if base and latest_cb is not None:
+            cb_yoy = (latest_cb / base - 1) * 100
     house = _latest(series, "cn_new_house_price_yoy")
     house2 = _latest(series, "cn_second_hand_price_yoy")
     pe_pct = _latest(series, "cn_a_pe_10y_pct")
