@@ -26,6 +26,7 @@
 | 静态 | 分层边界（API 层 ↔ 核心库） | ~2s | ✅ |
 | 测试 | 4 个分片并行（macro-discovery / engine / portfolio / marketdata） | ~30s | ✅ |
 | 前端 | `node --check` + 内联脚本 + 资源引用存在性 | ~3s | ✅ |
+| 元信息 | 分支命名 + 提交信息（Conventional Commits） | ~1s | ✅ |
 | 元信息 | PR 标题 Conventional Commits、描述长度与结构 | ~1s | ✅ |
 | 闸门 | `CI 汇总` 单一 required check | — | ✅ |
 | Nightly | 全量（含 network/integration）、xfail 漂移、依赖审计 | ~15min | ❌ 仅可见 |
@@ -37,6 +38,29 @@
 - 以后新增 job 不用改仓库设置；
 - 被 `if:` 主动跳过的 job（比如只改 README 不跑后端测试）算 `skipped`，不算失败；
 - 真正的失败会顺着 `needs` 冒泡到闸门，红得明确。
+
+## 二之二、分支与提交规范
+
+「每次都开新分支」和「提交信息规范」不靠自觉，靠两道锁：
+
+| 位置 | 检查 | 失败后果 |
+|---|---|---|
+| 本地 `commit-msg` hook | `check_commits.py --msg-file` | 提交直接被拒 |
+| CI `commits` job | `--branch` + `--range base..head` | PR 红，无法合并 |
+
+```
+分支：<type>/<短横线描述>        feat/macro-provinces
+提交：<type>(<scope>): <描述>    feat(macro): 增加省级变化对比
+```
+
+安装本地 hook（与 CI 同一套脚本）：
+
+```bash
+scripts/git/install_hooks.sh                 # commit-msg
+scripts/git/install_hooks.sh --with-pre-push # 追加 push 前 quick verify
+```
+
+完整规则见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
 ## 三、变更面过滤
 
@@ -137,3 +161,25 @@ scripts/ci/check_secrets.py  密钥扫描
 scripts/ci/check_layers.py   分层边界
 scripts/ci/check_frontend.py 前端语法与资源
 ```
+
+## 十一、仓库设置（已实测）
+
+`main` 使用 **Ruleset**（不是传统的 Branch protection rule），实测有效的配置：
+
+```
+name        : protect-main
+enforcement : active
+target      : branch
+include     : ["~DEFAULT_BRANCH"]      ← 关键！空数组 = 规则不作用任何分支
+rules       : deletion / non_fast_forward / pull_request(0 approvals)
+              / required_status_checks(strict=true, checks=["CI 汇总"])
+```
+
+> 踩过的坑：UI 里选了 `Include default branch` 但没点「加入」，
+> API 里 `include` 会是 `[]`，规则静默失效——直推 `main` 照样成功。
+> 验证方法：`git push origin main` 应返回 `GH013 Repository rule violations`。
+
+注意：ruleset 生效时 `GET /repos/{owner}/{repo}/branches/main` 的 `protected`
+字段仍然是 `false`（那是传统 branch protection 的字段），不能用来判断。
+
+分支保护无法用当前 CI token 设置（需要 `administration: write`），属于一次性手动操作。

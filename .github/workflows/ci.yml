@@ -140,7 +140,28 @@ jobs:
       - name: node --check + 资源引用
         run: python scripts/ci/check_frontend.py
 
-  # ---------------------------------------------------------------- 4. PR 元信息
+  # ---------------------------------------------------------------- 4. 提交规范
+  commits:
+    name: 提交规范
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 分支命名
+        run: python scripts/ci/check_commits.py --branch "${{ github.head_ref }}"
+
+      - name: 提交信息（Conventional Commits）
+        run: |
+          python scripts/ci/check_commits.py \
+            --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  # ---------------------------------------------------------------- 5. PR 元信息
   pr-meta:
     name: PR 元信息
     if: github.event_name == 'pull_request'
@@ -180,7 +201,7 @@ jobs:
   gate:
     name: CI 汇总
     if: always()
-    needs: [plan, static, tests, frontend, pr-meta]
+    needs: [plan, static, tests, frontend, commits, pr-meta]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总各层结果
