@@ -1,0 +1,26 @@
+# 受保护路径的归属说明
+#
+# 注意：本文件目前只作为文档用途，没有开启 ruleset 的
+# "Require review from Code Owners"（个人仓库里自己无法 approve 自己的 PR，
+# 开了会让所有 PR 卡死）。
+# 实际强制手段是 .github/workflows/ci-guard.yml：
+#   - 用 base 分支的脚本比对受保护路径
+#   - 改动需人工加标签 allow-guard-change
+#
+# 如果以后有多人协作，把下面几行打开并把 required approvals 设为 1 即可。
+
+# CI 与判分标准
+/.github/                @teeramisu
+/scripts/ci/             @teeramisu
+/ci/                     @teeramisu
+/requirements.txt        @teeramisu
+/requirements-ci.txt     @teeramisu
+/pytest.ini              @teeramisu
+/ruff.toml               @teeramisu
+/.coveragerc             @teeramisu
+
+# 测试（agent 不得自行放宽）
+/backend/tests/          @teeramisu
+
+# 默认：其他路径由 PR 作者自审
+*                        @teeramisu

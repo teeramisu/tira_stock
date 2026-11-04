@@ -186,6 +186,20 @@ CI 要求 ≥ 80 字符且有结构。建议四段：
 | 提交本身已清晰 | **Rebase and merge** |
 | 大功能需要保留分支结构 | Merge commit |
 
+## 五之二、受保护路径（CI 脚本 / 测试 / 依赖）
+
+以下路径的改动会被 `受保护路径守卫` 拦下，需要人工给 PR 加 `allow-guard-change` 标签：
+
+```
+.github/workflows/  scripts/ci/  scripts/agent/
+backend/tests/  requirements*.txt  pytest.ini  ruff.toml  .coveragerc  ci/
+```
+
+原因：这些文件决定「什么算通过」。让被考核方自己改判分标准，门禁就没有意义了。
+
+流程：正常开 PR → 守卫红 → 人在页面上加标签 → 守卫重跑通过 → 合并。
+详见 [docs/protected-paths.md](docs/protected-paths.md)。
+
 ## 六、合并前必须满足
 
 - [ ] `CI 汇总` 绿（分支保护强制）

@@ -1,0 +1,16 @@
+{
+  "comment": "agent 不得自行修改这些路径；改动需人工加标签 allow-guard-change。",
+  "patterns": [
+    ".github/workflows/",
+    ".github/CODEOWNERS",
+    "scripts/ci/",
+    "scripts/agent/",
+    "backend/tests/",
+    "requirements.txt",
+    "requirements-ci.txt",
+    "pytest.ini",
+    "ruff.toml",
+    ".coveragerc",
+    "ci/"
+  ]
+}
