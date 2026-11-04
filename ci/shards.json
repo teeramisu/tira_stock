@@ -1,38 +1,30 @@
 {
+  "_comment": "按 glob 匹配测试文件，新增测试只要命名符合约定就自动进入对应分片，无需改 CI。",
   "macro-discovery": [
-    "test_macro.py",
-    "test_discovery.py",
-    "test_discovery_portfolio.py",
-    "test_research.py"
+    "test_macro*.py",
+    "test_discovery*.py",
+    "test_research*.py"
   ],
   "engine": [
-    "test_engine.py",
-    "test_engine_edge_cases.py",
-    "test_engine_open_position.py",
+    "test_engine*.py",
     "test_custom_strategy.py",
     "test_strategy_library.py",
     "test_signal_combiner.py",
     "test_factors.py",
-    "test_jq_adapters.py",
-    "test_jq_new_adapters.py"
+    "test_jq*.py"
   ],
   "portfolio": [
-    "test_portfolio_engine.py",
-    "test_portfolio_strategies.py",
-    "test_portfolio_strategy_registry.py",
-    "test_portfolio_api.py",
+    "test_portfolio*.py",
     "test_symbol_attribution.py"
   ],
   "marketdata": [
     "test_data_fetch.py",
-    "test_marketdata.py",
-    "test_marketdata_raw_qfq.py",
+    "test_marketdata*.py",
     "test_market_status.py",
     "test_universe.py",
     "test_industry_heat.py",
     "test_stock_recommendation.py",
-    "test_yfinance_options.py",
-    "test_yfinance_us_exchange.py",
+    "test_yfinance*.py",
     "test_rl_backtest.py"
   ]
 }
