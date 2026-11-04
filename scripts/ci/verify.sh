@@ -7,13 +7,16 @@
 # 用法：
 #   scripts/ci/verify.sh            # 全量（约 40s）
 #   scripts/ci/verify.sh --quick    # 只跑静态层 + macro 分片
+#   scripts/ci/verify.sh --full     # 追加覆盖率 ratchet 与 PR 体量（提交前推荐）
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 ROOT="$(pwd)"
 PY="${PYTHON:-$ROOT/.venv/bin/python}"
 QUICK=0
+FULL=0
 [[ "${1:-}" == "--quick" ]] && QUICK=1
+[[ "${1:-}" == "--full" ]] && FULL=1
 
 have() { command -v "$1" >/dev/null 2>&1; }
 step() { printf '\n\033[1;36m▶ %s\033[0m\n' "$1"; }
@@ -54,6 +57,14 @@ if git rev-parse --verify --quiet origin/main >/dev/null; then
     echo "提交信息不符合 Conventional Commits，见 CONTRIBUTING.md"; exit 1; }
 else
   echo "（未找到 origin/main，跳过提交范围检查）"
+fi
+
+if [[ $FULL -eq 1 ]]; then
+  step "9/9 覆盖率 ratchet + PR 体量（--full 才跑，约 30s）"
+  "$PY" -m pytest backend/tests -q -p no:cacheprovider \
+    --cov=backend --cov-report=json:coverage.json >/dev/null
+  "$PY" scripts/ci/check_coverage.py --report coverage.json | tail -3
+  "$PY" scripts/ci/check_pr_size.py --base origin/main --head HEAD
 fi
 
 printf '\n\033[1;32m全部通过 —— 可以推送\033[0m\n'

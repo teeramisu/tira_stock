@@ -55,3 +55,9 @@ backend/data/
 backend/rl/models/
 backend/rl/tb_logs/
 backend/.ruff_cache/
+
+# 覆盖率产物（CI 上传 artifact，不入库）
+coverage.json
+.coverage
+.coverage.*
+htmlcov/

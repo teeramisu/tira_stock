@@ -8,6 +8,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Merge Queue：在「base + 队列中前面的 PR」组合上重跑必需检查
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -46,6 +48,8 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base="origin/${{ github.base_ref }}"
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            base="${{ github.event.merge_group.base_sha }}"
           elif [[ "${{ github.event_name }}" == "push" ]]; then
             base="${{ github.event.before }}"
             git rev-parse --verify --quiet "$base" >/dev/null || base="HEAD~1"
@@ -140,6 +144,59 @@ jobs:
       - name: node --check + 资源引用
         run: python scripts/ci/check_frontend.py
 
+  # ---------------------------------------------------------------- 3.5 覆盖率
+  coverage:
+    name: 覆盖率 ratchet
+    needs: plan
+    if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+
+      - name: 跑测试并统计覆盖率
+        run: |
+          python -m pytest backend/tests -q -p no:cacheprovider \
+            --cov=backend --cov-report=json:coverage.json --cov-report=term:skip-covered
+
+      - name: 覆盖率只许升（含最低覆盖率文件清单）
+        run: python scripts/ci/check_coverage.py --report coverage.json
+
+      - name: 保存覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json
+          path: coverage.json
+          retention-days: 14
+
+  # ---------------------------------------------------------------- 3.6 PR 体量
+  pr-size:
+    name: PR 体量预算
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 文件数与改动行数
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          python scripts/ci/check_pr_size.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$LABELS"
+
   # ---------------------------------------------------------------- 4. 提交规范
   commits:
     name: 提交规范
@@ -201,7 +258,7 @@ jobs:
   gate:
     name: CI 汇总
     if: always()
-    needs: [plan, static, tests, frontend, commits, pr-meta]
+    needs: [plan, static, tests, coverage, pr-size, frontend, commits, pr-meta]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总各层结果

@@ -1,0 +1,48 @@
+name: CI Guard
+
+# 防「改考卷」：用 base 分支的脚本判断 PR 是否动了受保护路径。
+# pull_request_target 会在默认分支的上下文里运行，PR 里的代码一行都不会被执行。
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: 受保护路径守卫
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取 base 分支的守卫脚本（不取 PR 代码）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install --quiet requests
+
+      - name: 比对受保护路径
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python base/scripts/ci/check_guard.py \
+            --repo "$REPO" \
+            --pr "$PR_NUMBER" \
+            --labels "$PR_LABELS"

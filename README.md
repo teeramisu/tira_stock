@@ -377,7 +377,7 @@ scripts/ci/verify.sh
 - 历史 lint 债务用 ratchet 管理：`ci/lint-baseline.json` 只允许下降。
 - 已知失败用 `@pytest.mark.xfail`，Nightly 用 `--runxfail` 每天还原真实状态。
 
-设计细节与「如何新增一条检查」见 [docs/ci.md](docs/ci.md)；分支/提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+设计细节与「如何新增一条检查」见 [docs/ci.md](docs/ci.md)；分支/提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；agent 自主合并的机制见 [docs/agent-ci.md](docs/agent-ci.md)。
 
 ## 回测逻辑（可验证）
 

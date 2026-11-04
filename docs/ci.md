@@ -162,6 +162,11 @@ scripts/ci/check_layers.py   分层边界
 scripts/ci/check_frontend.py 前端语法与资源
 ```
 
+## 十之二、agent 自主合并
+
+让 agent 自己提交、自己合并所需的额外机制（受保护路径守卫、覆盖率 ratchet、
+PR 体量预算、Merge Queue、token 最小权限）见 [agent-ci.md](agent-ci.md)。
+
 ## 十一、仓库设置（已实测）
 
 `main` 使用 **Ruleset**（不是传统的 Branch protection rule），实测有效的配置：
