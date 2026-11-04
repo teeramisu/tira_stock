@@ -5,12 +5,13 @@
 #                                            （backend/tests/test_rl_backtest.py 用 importorskip 自动 skip）
 #   optuna / tensorboard                   —— 仅调参与日志，测试不依赖
 #   transformers / accelerate              —— 本地大模型评分，未安装时接口返回 503
-#   uvicorn                                —— 测试走 TestClient，不需要真实 ASGI 服务器
+#   （uvicorn 保留：前端视觉证据需要真实起一次服务）
 #
 # 若某个新测试依赖被剔除的包，请把它加成「可选依赖」并用 pytest.importorskip 保护，
 # 而不是把 2GB 的依赖塞回 CI。
 
 fastapi>=0.109.0
+uvicorn>=0.27.0
 yfinance>=0.2.36
 pandas>=2.0.0
 numpy>=1.24.0

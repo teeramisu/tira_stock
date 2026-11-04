@@ -92,6 +92,23 @@ python scripts/ci/check_style.py --base origin/main --head HEAD
 
 > 好处：agent 新增的代码从第一行起就合规，而不用先还清历史债。
 
+## 二之四、前端视觉证据
+
+静态检查能发现 JS 语法错，但发现不了「按钮跑到屏幕外」「深色主题下文字看不见」
+「移动端布局塌了」—— 这些只有渲染出来才知道。
+
+```bash
+# 本地（需先起服务）
+python -m uvicorn main:app --app-dir backend/app --port 8000 &
+python scripts/ci/frontend_screenshots.py --out artifacts/screenshots
+```
+
+产物：首页 / 宏观罗盘 / 回测 × 桌面(1440×900) / 移动端(390×844) = 6 张图 + `summary.json`，
+CI 里作为 `frontend-screenshots` artifact 保留 14 天。
+
+**只报告不阻断**：CI 是干净 checkout，没有 `data/`，部分面板本来就是空状态；
+截图用于 review 时肉眼比对，而不是当断言。未捕获的 JS 异常会写进 Step Summary。
+
 ## 三、变更面过滤
 
 `scripts/ci/changed_areas.py` 按路径判断这次动了什么：

@@ -233,10 +233,11 @@ jobs:
 
   # ---------------------------------------------------------------- 3. 前端
   frontend:
-    name: 前端语法与资源
+    name: 前端语法与视觉
     needs: plan
     if: needs.plan.outputs.frontend == 'true' || needs.plan.outputs.ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -245,8 +246,60 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+
       - name: node --check + 资源引用
         run: python scripts/ci/check_frontend.py
+
+      - name: 安装 Playwright（含 chromium）
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: 启动本地服务
+        run: |
+          set -euo pipefail
+          python -m uvicorn main:app --app-dir backend/app --host 127.0.0.1 --port 8000 \
+            > /tmp/uvicorn.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8000/; then
+              echo "服务已就绪（${i}s）"; exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ 服务启动超时（日志如下）"
+          tail -50 /tmp/uvicorn.log || true
+          exit 1
+
+      - name: 截图（桌面 + 移动端）
+        run: python scripts/ci/frontend_screenshots.py --out artifacts/screenshots
+
+      - name: 截图写进 Summary
+        if: always()
+        run: |
+          if [[ -f artifacts/screenshots/summary.json ]]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          data = json.loads(pathlib.Path("artifacts/screenshots/summary.json").read_text())
+          print("### 前端截图")
+          for shot in data.get("screenshots", []):
+              print(f"- `{shot}`")
+          errors = data.get("js_errors", [])
+          print(f"\n未捕获 JS 异常：**{len(errors)}**")
+          for item in errors[:10]:
+              print(f"- [{item['viewport']}] {item['error'][:160]}")
+          PY
+          fi
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-screenshots
+          path: artifacts/screenshots
+          retention-days: 14
 
   # ---------------------------------------------------------------- 4. 提交规范
   commits:
