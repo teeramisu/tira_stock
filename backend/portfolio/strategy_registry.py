@@ -27,6 +27,8 @@ from portfolio.strategies import (
     RiskAdjustedMomentumStrategy,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class _PortfolioRequest(Protocol):
     strategy: str

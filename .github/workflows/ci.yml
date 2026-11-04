@@ -1,0 +1,205 @@
+name: CI
+
+# 分层验证管线（静态 → 单元/集成 → 前端 → 元信息 → 单一闸门）
+# 设计说明见 docs/ci.md
+
+on:
+  # 不限制 base 分支：stacked PR（如 ci → feature）也要能触发
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# 同一分支连续推送时取消旧运行，省 runner 也省等待
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  # ---------------------------------------------------------------- 0. 变更面
+  plan:
+    name: 变更面探测
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.areas.outputs.backend }}
+      frontend: ${{ steps.areas.outputs.frontend }}
+      ci: ${{ steps.areas.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 计算受影响区域
+        id: areas
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="origin/${{ github.base_ref }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            base="${{ github.event.before }}"
+            git rev-parse --verify --quiet "$base" >/dev/null || base="HEAD~1"
+          else
+            base="HEAD~1"
+          fi
+          python scripts/ci/changed_areas.py --base "$base" | tee /tmp/areas.txt
+          grep -E '^(backend|frontend|ci|count)=' /tmp/areas.txt >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------- 1. 静态层
+  static:
+    name: 静态分析
+    needs: plan
+    if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+
+      - name: 阻断规则（未定义名 / 语法错 / 无效比较）
+        run: python -m ruff check backend scripts --output-format=github
+
+      - name: Lint 债务 ratchet
+        run: python scripts/ci/lint_ratchet.py
+
+      - name: 字节码编译（捕获语法层面的隐性坏文件）
+        run: python -m compileall -q backend scripts
+
+      - name: 仓库卫生
+        run: python scripts/ci/check_hygiene.py
+
+      - name: 密钥扫描
+        run: python scripts/ci/check_secrets.py
+
+      - name: 分层边界
+        run: python scripts/ci/check_layers.py
+
+      - name: 应用可导入（FastAPI app 装配成功）
+        run: python -c "import sys; sys.path.insert(0,'backend'); import app.main; print('app import ok')"
+        env:
+          ENV: ci
+
+  # ---------------------------------------------------------------- 2. 测试主体
+  tests:
+    name: 测试 / ${{ matrix.shard }}
+    needs: plan
+    if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [macro-discovery, engine, portfolio, marketdata]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+
+      - name: 分片表完整性（新增测试文件必须登记）
+        run: python scripts/ci/shard_tests.py --validate
+
+      - name: 运行分片
+        run: |
+          set -euo pipefail
+          files=$(python scripts/ci/shard_tests.py --list "${{ matrix.shard }}" | tr '\n' ' ')
+          echo "目标文件: $files"
+          python -m pytest $files -q --durations=10 -p no:cacheprovider
+
+  # ---------------------------------------------------------------- 3. 前端
+  frontend:
+    name: 前端语法与资源
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true' || needs.plan.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: node --check + 资源引用
+        run: python scripts/ci/check_frontend.py
+
+  # ---------------------------------------------------------------- 4. PR 元信息
+  pr-meta:
+    name: PR 元信息
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 标题遵循 Conventional Commits
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._-]+\))?!?: .{4,}$'
+          if ! [[ "$TITLE" =~ $pattern ]]; then
+            echo "❌ PR 标题不符合 Conventional Commits：$TITLE"
+            echo "   例：feat(macro): 增加省级变化对比"
+            exit 1
+          fi
+          if [[ "$TITLE" =~ ^(WIP|wip|fixup) ]]; then
+            echo "❌ 草稿 PR 请用 draft 状态，而不是 WIP 标题"
+            exit 1
+          fi
+      - name: 描述非空且有结构
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          chars=${#BODY}
+          echo "描述长度: $chars"
+          if [[ $chars -lt 80 ]]; then
+            echo "❌ PR 描述太短（<80 字符），请说明改动与验证方式"
+            exit 1
+          fi
+          if ! grep -qE '^##+ ' <<< "$BODY"; then
+            echo "⚠️  建议用 '## 改动' / '## 验证' 之类的小标题组织描述"
+          fi
+
+  # ---------------------------------------------------------------- 5. 单一闸门
+  gate:
+    name: CI 汇总
+    if: always()
+    needs: [plan, static, tests, frontend, pr-meta]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 汇总各层结果
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          bad = {k: v["result"] for k, v in needs.items() if v["result"] in {"failure", "cancelled"}}
+          for name, result in needs.items():
+              print(f"{name:<12} {result}")
+          if bad:
+              print("\n❌ 有阻断项失败：", bad)
+              sys.exit(1)
+          print("\n✅ 所有需要的层级均通过（skipped 视为按变更面主动跳过）")
+          PY
+
+      - name: 说明
+        run: |
+          echo "这是分支保护建议设置成 required 的唯一检查项，避免每次加 job 都要改保护规则。"

@@ -3,6 +3,7 @@ backtest 相关 API：回测执行、历史记录、策略列表。
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import logging

@@ -13,6 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+pytest.importorskip("torch", reason="RL 测试需要可选依赖 torch")
+
 # ============================================================
 # Fixtures
 # ============================================================

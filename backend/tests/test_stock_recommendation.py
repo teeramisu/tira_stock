@@ -9,8 +9,12 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+pytestmark = pytest.mark.requires_data
 
 from services.stock_recommendation import (  # noqa: E402
     _rule_score,

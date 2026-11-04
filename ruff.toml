@@ -1,0 +1,34 @@
+# Ruff 配置：静态分析基线
+#
+# 设计原则（参考 Lauren Tan 的分层验证思路）：
+#   1. 阻断层只放「一定会炸」的规则（语法错、未定义名、无效比较），零噪音；
+#   2. 债务层用 ratchet（只允许变少，不允许变多），见 scripts/ci/lint_ratchet.py；
+#   3. 新人/新人型错误（未使用变量、导入顺序）先不计入阻断，避免 CI 一上线就红。
+
+target-version = "py311"
+line-length = 120
+
+exclude = [
+    ".venv",
+    "venv",
+    "data",
+    "backend/rl/models",
+    "backend/data",
+    "__pycache__",
+    ".git",
+    "frontend/js/echarts.min.js",
+]
+
+[lint]
+# 阻断规则集：真实缺陷（bug 级），不是风格问题
+select = [
+    "E9",   # 语法 / IO 错误
+    "F63",  # 无效比较（is 字面量等）
+    "F7",   # 语法级错误
+    "F82",  # 未定义名称
+]
+
+[lint.per-file-ignores]
+# 测试允许直接操作 sys.path 与私有函数
+"backend/tests/**" = ["E402"]
+"scripts/**" = ["E402"]
