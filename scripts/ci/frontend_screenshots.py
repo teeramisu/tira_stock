@@ -54,7 +54,7 @@ def main() -> int:
         browser = pw.chromium.launch()
         for label, (width, height) in VIEWPORTS.items():
             page = browser.new_page(viewport={"width": width, "height": height})
-            page.on("pageerror", lambda exc, l=label: errors.append({"viewport": l, "error": str(exc)}))
+            page.on("pageerror", lambda exc, vp=label: errors.append({"viewport": vp, "error": str(exc)}))
 
             try:
                 page.goto(args.base_url, wait_until="networkidle", timeout=args.timeout)
@@ -63,7 +63,7 @@ def main() -> int:
                 page.close()
                 continue
 
-            for key, name in PAGES.items():
+            for key in PAGES:
                 if key != "home":
                     selector = f'.top-nav-btn[data-page="{key}"]'
                     if page.locator(selector).count() == 0:
