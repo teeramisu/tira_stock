@@ -70,7 +70,67 @@ scripts/git/install_hooks.sh --with-pre-push # 额外在 push 前跑 quick verif
 
 > 已经在用的仓库也可以手动检查：`python scripts/ci/check_commits.py --range origin/main..HEAD`
 
-## 三、PR 规范
+## 三、一个 PR 只做一件事
+
+这条不是洁癖，是为了**回滚**和**定位**：
+
+- 混在一起的 PR 出问题只能整包 revert，会连带回滚掉没问题的那部分；
+- CI 红了分不清是「代码坏了」还是「判分标准变了」；
+- review 只能整体点头，等于没 review。
+
+### 怎么算「一件事」
+
+一个分区。`check_pr_scope.py` 把仓库分成 6 个功能区：
+
+| 功能区 | 路径 |
+|---|---|
+| `backend` | `backend/**`（除 tests） |
+| `tests` | `backend/tests/**`（跟随业务代码，不计入跨度） |
+| `frontend` | `frontend/**` |
+| `ci` | `.github/**`、`scripts/ci/**`、`scripts/agent/**`、`ci/**`、`requirements*`、`pytest.ini`、`ruff.toml`、`.coveragerc` |
+| `scripts` | `scripts/**`（数据管线脚本） |
+| `docs` | `docs/**`、`*.md` |
+
+规则：
+
+1. **最多跨 2 个功能区**（超过需人工加 `multi-area` 标签）；
+2. **业务代码和 CI 改动永远分开**（`ci` 与 `backend`/`frontend` 不能同框）——
+   否则无法判断是代码坏了还是标准变了；
+3. 测试跟随业务代码，不算独立分区。
+
+### PR 体量预算
+
+| 阈值 | 限制 | 处理 |
+|---|---|---|
+| 软上限 | 40 文件 / 1500 行 | 需人工 `large-pr` 标签 |
+| 硬上限 | 120 文件 / 4000 行 | 直接失败，必须拆 |
+
+`data/`、`backend/rl/models/`、`*.min.js`、锁文件不计入。
+
+## 四、PR 描述 = 回滚说明书
+
+CI 会检查三件事：标题格式、描述长度 ≥ 120 字符、三个小节齐全。
+
+```markdown
+## 背景
+为什么改（问题现象、需求来源）。一段话，不写「优化了一下」。
+
+## 改动
+- 改了哪些文件、哪些行为
+- 有意没做的部分也写出来
+
+## 验证
+命令 + 结果（`scripts/ci/verify.sh` 输出、CI 链接、手动验证步骤）
+
+## 回退
+（feat / refactor / perf 类建议写）revert 这条 PR 是否安全？
+有没有数据迁移、配置变更、外部依赖需要同步回滚？
+```
+
+> 为什么强制「验证」一节：没有验证记录的 PR，出问题时无法判断它是
+> 「本来就没验」还是「验了但环境不同」，排查成本翻倍。
+
+## 五、PR 标题与合并方式
 
 ### 标题
 
@@ -109,24 +169,26 @@ CI 要求 ≥ 80 字符且有结构。建议四段：
 | 提交本身已清晰 | **Rebase and merge** |
 | 大功能需要保留分支结构 | Merge commit |
 
-## 四、合并前必须满足
+## 六、合并前必须满足
 
 - [ ] `CI 汇总` 绿（分支保护强制）
+- [ ] 只碰了一个功能区（`pr-scope` 强制）
+- [ ] 体量在预算内（`pr-size` 强制）
 - [ ] 没有把 `data/`、`backend/rl/models/`、`.env` 加进索引（`check_hygiene.py` 强制）
 - [ ] 新增测试文件已登记到 `ci/shards.json`（`shard_tests.py` 强制）
 - [ ] 没有新增 lint 债务（`lint_ratchet.py` 强制）
 - [ ] 改了行为就补测试；如果暂时修不了，用 `@pytest.mark.xfail(strict=False, reason=...)` 显式记账
 
-## 五、本地自检
+## 七、本地自检
 
 ```bash
-scripts/ci/verify.sh          # 与 CI 完全相同的 7 步，约 40 秒
+scripts/ci/verify.sh          # 与 CI 完全相同的 9 步，约 45 秒
 scripts/ci/verify.sh --quick  # 静态层 + macro 分片，约 10 秒
 ```
 
 CI 里没有本地跑不了的检查。详细分层见 [docs/ci.md](docs/ci.md)。
 
-## 六、紧急情况
+## 八、紧急情况
 
 生产事故需要绕过 PR 时：
 
