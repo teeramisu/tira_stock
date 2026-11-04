@@ -268,6 +268,12 @@ scripts/ci/check_frontend.py 前端语法与资源
 `pull_request_target` + base 分支脚本 + 人工标签。
 详见 [protected-paths.md](protected-paths.md)。
 
+## 十之四、agent 工作流
+
+强制层之上还有两层：**知识层**（`.opencode/skills/`：路由 + 4 个 playbook + 6 条原则）
+与**执行层**（`scripts/agent/loop.py`：一个 PR 周期一条命令）。
+设计取舍与 Pstack 的对照见 [agent-system.md](agent-system.md)。
+
 ## 十一、仓库设置（已实测）
 
 `main` 使用 **Ruleset**（不是传统的 Branch protection rule），实测有效的配置：
