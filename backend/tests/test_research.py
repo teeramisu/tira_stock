@@ -208,6 +208,7 @@ def test_strategy_cannot_validate_without_out_of_sample_metrics():
     assert "missing_out_of_sample" in reasons
 
 
+@pytest.mark.requires_data
 def test_regime_metrics_slice_equity_curve_by_config():
     """Regime slicing should return metrics per configured window."""
     equity_curve = pd.DataFrame(

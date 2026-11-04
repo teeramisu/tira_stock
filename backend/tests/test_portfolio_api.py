@@ -199,6 +199,7 @@ def test_portfolio_backtest_endpoint_runs_momentum_top_k(tmp_path, monkeypatch):
     assert payload["run_provenance"]["params_hash"] == payload["request_hash"]
 
 
+@pytest.mark.requires_data
 def test_multi_strategy_portfolio_endpoint_allocates_via_allocator(tmp_path, monkeypatch):
     """Multi-strategy endpoint runs sleeves and returns allocation artifact."""
     db_path = tmp_path / "market.duckdb"
@@ -329,6 +330,7 @@ def test_portfolio_artifacts_endpoint_reads_from_snapshot_file(tmp_path, monkeyp
     assert payload["total"] >= 1
 
 
+@pytest.mark.requires_data
 def test_portfolio_backtest_endpoint_runs_etf_rotation_top1(tmp_path, monkeypatch):
     """Portfolio endpoint supports ETF rotation top1 strategy."""
     db_path = tmp_path / "market.duckdb"
@@ -354,6 +356,7 @@ def test_portfolio_backtest_endpoint_runs_etf_rotation_top1(tmp_path, monkeypatc
     assert payload["trades"]
 
 
+@pytest.mark.requires_data
 def test_portfolio_backtest_endpoint_returns_json_safe_metrics(tmp_path, monkeypatch):
     """Portfolio endpoint must not emit NaN/Inf (Starlette JSON rejects them)."""
     db_path = tmp_path / "market.duckdb"
