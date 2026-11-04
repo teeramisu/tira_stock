@@ -8,6 +8,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Merge Queue：在「base + 队列中前面的 PR」组合上重跑必需检查
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -46,6 +48,8 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base="origin/${{ github.base_ref }}"
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            base="${{ github.event.merge_group.base_sha }}"
           elif [[ "${{ github.event_name }}" == "push" ]]; then
             base="${{ github.event.before }}"
             git rev-parse --verify --quiet "$base" >/dev/null || base="HEAD~1"
