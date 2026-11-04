@@ -26,6 +26,7 @@
 | 静态 | 分层边界（API 层 ↔ 核心库） | ~2s | ✅ |
 | 静态 | **Google 风格（仅新增行）** | ~5s | ✅ |
 | 测试 | 4 个分片并行（macro-discovery / engine / portfolio / marketdata） | ~30s | ✅ |
+| 测试 | 分片内失败自动重跑一次，区分偶发与真失败 | 仅失败时 | ✅ |
 | 测试 | **覆盖率 ratchet**（整体只许升） | ~25s | ✅ |
 | 前端 | `node --check` + 内联脚本 + 资源引用存在性 | ~3s | ✅ |
 | 元信息 | 分支命名 + 提交信息（Conventional Commits） | ~1s | ✅ |
@@ -101,6 +102,24 @@ python scripts/ci/check_style.py --base origin/main --head HEAD
 | frontend | `frontend/` | frontend |
 | ci | `.github/`、`ci/`、`scripts/ci/` | **全部**（改 CI 本身必须验证整条链路） |
 | docs | `docs/`、`README*` | 都不触发（只跑 pr-meta） |
+
+## 三之一、偶发失败（flaky）处理
+
+```bash
+python scripts/ci/run_tests.py backend/tests/test_macro.py
+```
+
+| 第 1 次 | 重跑 | 判定 | 是否阻断 |
+|---|---|---|---|
+| 通过 | — | 正常 | 否 |
+| 失败 | 通过 | **FLAKY** | 否，但明细写进 Step Summary |
+| 失败 | 失败 | 真失败 | 是 |
+
+为什么 **整片重跑**而不是只跑失败用例：只重跑失败用例会掩盖「测试间互相污染」，
+而那种问题恰恰是改动引入回归的早期信号。
+
+判定为 flaky 后要做的不是反复重试，而是**消除不确定性**：
+固定随机种子、mock 时间/网络、或调整断言粒度。
 
 ## 三之二、覆盖率 ratchet
 

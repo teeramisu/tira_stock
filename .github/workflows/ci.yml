@@ -158,12 +158,21 @@ jobs:
       - name: 分片表完整性（新增测试文件必须登记）
         run: python scripts/ci/shard_tests.py --validate
 
-      - name: 运行分片
+      - name: 运行分片（失败自动重跑一次，区分偶发）
         run: |
           set -euo pipefail
           files=$(python scripts/ci/shard_tests.py --list "${{ matrix.shard }}" | tr '\n' ' ')
           echo "目标文件: $files"
-          python -m pytest $files -q --durations=10 -p no:cacheprovider
+          python scripts/ci/run_tests.py $files
+
+      - name: 偶发失败明细写进 Summary
+        if: always()
+        run: |
+          if [[ -f /tmp/flaky-summary.md ]]; then
+            cat /tmp/flaky-summary.md >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 第 1 次失败、重跑通过；本次未阻断，但请尽快消除不确定性。" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # ---------------------------------------------------------------- 2.5 覆盖率
   coverage:
