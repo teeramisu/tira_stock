@@ -4,8 +4,8 @@ name: CI
 # 设计说明见 docs/ci.md
 
 on:
+  # 不限制 base 分支：stacked PR（如 ci → feature）也要能触发
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
