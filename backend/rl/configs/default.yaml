@@ -1,0 +1,104 @@
+# RL-MACS Default Configuration
+# Multi-Agent Reinforcement Learning Collaborative Trading System
+
+# === Environment ===
+env:
+  initial_cash: 1000000.0
+  commission_rate: 0.001  # 0.1% per trade
+  slippage: 0.0005  # 0.05% slippage
+  n_market_features: 10
+  n_regime_classes: 4
+  agent_opinion_dims: 26  # 8 (factor) + 6 (macro) + 6 (sentiment) + 6 (technical)
+  account_state_dims: 3
+  max_episode_length: 252  # One trading year
+  normalize_obs: true
+
+# === Reward Function ===
+reward:
+  alpha: 1.0  # risk-adjusted return weight
+  beta: 0.1  # transaction cost penalty
+  gamma_dd: 2.0  # drawdown penalty weight
+  delta: 0.5  # concentration penalty weight
+  risk_free_rate: 0.0
+  dd_threshold: 0.10  # 10% drawdown before penalty
+  vol_window: 30
+  reward_scale: 10.0
+  reward_clip: 5.0
+  use_sharpe_reward: true
+
+# === Risk Overlay ===
+risk_overlay:
+  max_single_position: 0.20  # Max 20% single asset
+  min_cash_buffer: 0.05  # At least 5% cash
+  max_daily_turnover: 0.30  # Max 30% turnover per day
+  max_total_leverage: 1.0  # No leverage
+  allow_short: false  # Long-only
+
+# === Decision Agent Network ===
+decision:
+  hidden_dims: [256, 128, 64]
+  regime_embed_dim: 16
+  n_regime_classes: 4
+  dropout: 0.1
+  safety_threshold: 0.3  # Risk tolerance θ
+  safety_weight: 1.0
+  action_scale: 0.3
+  learning_rate_actor: 0.0003
+  learning_rate_critic: 0.001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  n_epochs: 10
+  batch_size: 256
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+
+# === Training Pipeline ===
+training:
+  warmup_steps: 50000
+  main_steps: 500000
+  learning_rate: 0.0003
+  n_steps: 2048  # Rollout length
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  net_arch: [256, 128, 64]
+  n_envs: 4
+  max_episode_length: 252
+  use_curriculum: true
+  curriculum_stages: ["BULL", "RANGE", "BEAR", "CRASH"]
+  eval_freq: 10000
+  eval_episodes: 5
+  save_freq: 50000
+  ensemble_seeds: [42, 123, 456]
+  device: "auto"
+
+# === Agent Configuration ===
+agents:
+  factor:
+    lookback_momentum: 20
+    lookback_short: 5
+  macro:
+    vol_lookback: 60
+  sentiment:
+    sentiment_lookback: 20
+    fear_window: 5
+  technical:
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    bb_period: 20
+    bb_std: 2.0
+
+# === Paths ===
+paths:
+  model_dir: "backend/rl/models"
+  log_dir: "backend/rl/logs"
+  tensorboard_log: "backend/rl/tb_logs"

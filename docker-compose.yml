@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "80:8000"
+    environment:
+      # Add any environment variables here, e.g.:
+      # DATABASE_URL: postgresql://user:password@host:port/db
+      # For now, we assume no database is needed for basic functionality.
+    restart: unless-stopped

@@ -1,8 +1,14 @@
 """美股 ETF 估值筛选：基于 P/E、P/B、股息率等找出相对低估的 Top10。"""
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from datetime import date, timedelta
 from typing import Any, Optional
+
+import numpy as np
+import pandas as pd
+import requests
 
 # 常见美股股票型 ETF（数量控制以缩短总耗时，避免卡住）
 US_EQUITY_ETFS = [
@@ -24,6 +30,52 @@ def _get_info(ticker: str) -> Optional[dict[str, Any]]:
         return info
     except Exception:
         return None
+
+
+def _get_performance(ticker: str) -> dict[str, Any]:
+    """拉取单只 ETF 近 1 年行情，计算 1月/6月/1年涨幅和 1 年胜率。"""
+    result: dict[str, Any] = {
+        "return_1m": None,
+        "return_6m": None,
+        "return_1y": None,
+        "win_rate_1y": None,
+    }
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        df = t.history(period="1y", auto_adjust=True)
+        if df is None or df.empty or len(df) < 20:
+            return result
+        close = df["Close"].dropna()
+        if close.empty:
+            return result
+
+        latest = float(close.iloc[-1])
+
+        # 涨幅计算
+        def _ret(days_back: int) -> Optional[float]:
+            target_date = close.index[-1] - timedelta(days=days_back)
+            mask = close.index >= target_date
+            if not mask.any():
+                return None
+            earliest = float(close.loc[mask].iloc[0])
+            if earliest <= 0:
+                return None
+            return round((latest / earliest - 1) * 100, 2)
+
+        result["return_1m"] = _ret(30)
+        result["return_6m"] = _ret(182)
+        result["return_1y"] = _ret(365)
+
+        # 1 年胜率：过去 1 年中正收益交易日占比
+        daily_ret = close.pct_change().dropna()
+        if len(daily_ret) > 0:
+            wins = (daily_ret > 0).sum()
+            result["win_rate_1y"] = round(wins / len(daily_ret) * 100, 1)
+
+    except Exception:
+        pass
+    return result
 
 
 def _safe_float(v: Any, default: Optional[float] = None) -> Optional[float]:
@@ -55,14 +107,25 @@ def _reasons(pe: Optional[float], pb: Optional[float], div: Optional[float], nam
 def get_undervalued_etfs(top_n: int = 10) -> list[dict[str, Any]]:
     """
     从一批美股股票型 ETF 中，用 P/E、P/B、股息率 做简单打分，选出相对「低估」的 Top N。
-    理由基于当前市盈率、市净率、股息率文字描述。
-    使用线程池并发拉取并带超时，避免单只卡住导致接口无响应。
+    同时计算 1月/6月/1年涨幅和 1 年胜率。
     """
     candidates: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(_get_info, symbol): symbol for symbol in US_EQUITY_ETFS}
-        for fut in futures:
-            symbol = futures[fut]
+        # 提交 info 和 performance 两类任务
+        info_futures = {pool.submit(_get_info, symbol): symbol for symbol in US_EQUITY_ETFS}
+        perf_futures = {pool.submit(_get_performance, symbol): symbol for symbol in US_EQUITY_ETFS}
+
+        # 收集 performance 结果
+        perf_results: dict[str, dict] = {}
+        for fut in perf_futures:
+            symbol = perf_futures[fut]
+            try:
+                perf_results[symbol] = fut.result(timeout=FETCH_TIMEOUT + 5)
+            except Exception:
+                perf_results[symbol] = {}
+
+        for fut in info_futures:
+            symbol = info_futures[fut]
             try:
                 info = fut.result(timeout=FETCH_TIMEOUT)
             except (FuturesTimeoutError, Exception):
@@ -98,6 +161,7 @@ def get_undervalued_etfs(top_n: int = 10) -> list[dict[str, Any]]:
                 score += min(1.0, div / 5.0) * 0.2
 
             reasons = _reasons(pe, pb, div, short_name)
+            perf = perf_results.get(symbol, {})
             candidates.append({
                 "symbol": symbol,
                 "name": short_name,
@@ -106,7 +170,57 @@ def get_undervalued_etfs(top_n: int = 10) -> list[dict[str, Any]]:
                 "dividend_yield_pct": round(div, 2) if div is not None else None,
                 "score": round(score, 4),
                 "reasons": reasons,
+                "return_1m": perf.get("return_1m"),
+                "return_6m": perf.get("return_6m"),
+                "return_1y": perf.get("return_1y"),
+                "win_rate_1y": perf.get("win_rate_1y"),
             })
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
     return candidates[:top_n]
+
+
+def get_etf_holdings(symbol: str, top_n: int = 20) -> list[dict[str, Any]]:
+    """从 stockanalysis.com 获取 ETF 的 Top N 持仓（代码、名称、权重）。"""
+    url = f"https://stockanalysis.com/etfs/{symbol.lower()}/holdings/"
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        r.raise_for_status()
+    except Exception:
+        # fallback URL format
+        url = f"https://stockanalysis.com/etf/{symbol.lower()}/holdings/"
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            r.raise_for_status()
+        except Exception:
+            return []
+
+    rows = re.findall(r"<tr[^>]*>.*?</tr>", r.text, re.DOTALL)
+    holdings: list[dict[str, Any]] = []
+    for row in rows:
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+        if len(tds) < 4:
+            continue
+        rank_text = re.sub(r"<[^>]+>", "", tds[0]).strip()
+        sym = re.sub(r"<[^>]+>", "", tds[1]).strip()
+        name = re.sub(r"<[^>]+>", "", tds[2]).strip()
+        weight_text = re.sub(r"<[^>]+>", "", tds[3]).strip()
+        # Parse weight percentage
+        weight_match = re.search(r"([\d.]+)%", weight_text)
+        if not weight_match:
+            continue
+        try:
+            rank = int(rank_text)
+            weight = float(weight_match.group(1))
+        except (ValueError, TypeError):
+            continue
+        holdings.append({
+            "rank": rank,
+            "symbol": sym,
+            "name": name,
+            "weight_pct": weight,
+        })
+        if len(holdings) >= top_n:
+            break
+    return holdings

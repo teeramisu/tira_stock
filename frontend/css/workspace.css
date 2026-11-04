@@ -1,0 +1,257 @@
+/* Backtest workspace — layout, result tabs, governance & audit panels */
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e1d9ca;
+}
+
+.result-tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #d8cdbd;
+  background: #fffdf8;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.result-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.result-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.result-tab.is-hidden {
+  display: none;
+}
+
+.result-panel.hidden {
+  display: none;
+}
+
+.gov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.gov-card {
+  background: var(--bg);
+  border: 1px solid #e1d9ca;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.gov-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.gov-card .sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0 0 8px 0;
+}
+
+.kv-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.kv-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px dashed #ebe3d6;
+}
+
+.kv-list li:last-child {
+  border-bottom: none;
+}
+
+.kv-list .k {
+  color: var(--muted);
+}
+
+.kv-list .v {
+  font-weight: 600;
+  text-align: right;
+}
+
+.kv-list .v.positive {
+  color: var(--green);
+}
+
+.kv-list .v.negative {
+  color: var(--red);
+}
+
+.badge-pass {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: #eef9f2;
+  color: var(--green);
+  border: 1px solid #b8dac4;
+}
+
+.badge-fail {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: #fdf0f0;
+  color: var(--red);
+  border: 1px solid #e8c4c4;
+}
+
+.audit-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .audit-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.audit-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #e1d9ca;
+  border-radius: 10px;
+  background: #fffaf2;
+}
+
+.audit-day-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebe3d6;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.audit-day-item:hover,
+.audit-day-item.active {
+  background: #edf4fb;
+}
+
+.audit-day-item .meta {
+  color: var(--muted);
+  font-size: 0.74rem;
+  margin-top: 4px;
+}
+
+.decision-tree {
+  border: 1px solid #e1d9ca;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fffdf8;
+  font-size: 0.82rem;
+}
+
+.decision-tree .node {
+  margin-bottom: 10px;
+  padding-left: 12px;
+  border-left: 3px solid #d8cdbd;
+}
+
+.decision-tree .node-title {
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.decision-tree ul {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.decision-tree .muted {
+  color: var(--muted);
+}
+
+.alloc-bar-wrap {
+  margin: 8px 0 14px 0;
+}
+
+.alloc-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.alloc-bar-label {
+  width: 88px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.alloc-bar-track {
+  flex: 1;
+  height: 10px;
+  background: #ebe3d6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.alloc-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.alloc-bar-pct {
+  width: 48px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.sleeve-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sleeve-card {
+  border: 1px solid #e1d9ca;
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--bg);
+}
+
+.sleeve-card h5 {
+  margin: 0 0 8px 0;
+  font-size: 0.88rem;
+}
+
+.history-item:hover {
+  background: #faf5eb;
+  border-color: #d8cdbd;
+}

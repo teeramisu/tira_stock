@@ -42,3 +42,16 @@ temp/
 
 # OpenClaw 配置（本地配置）
 ~/.openclaw/
+
+# 本地生成数据 / 行情库（体积大，不入库）
+data/
+backend/data/
+
+# 本地 IDE / Agent 配置
+.qoder/
+.cursor/
+
+# RL 训练模型 / 日志（本地生成，体积大）
+backend/rl/models/
+backend/rl/tb_logs/
+backend/.ruff_cache/
