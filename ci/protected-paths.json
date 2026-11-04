@@ -12,5 +12,9 @@
     "ruff.toml",
     ".coveragerc",
     "ci/"
-  ]
+  ],
+  "allow_pure_additions": [
+    "backend/tests/"
+  ],
+  "allow_pure_additions_comment": "这些路径下「只增不删」的改动自动放行：新增测试无法削弱既有断言，删改才算。"
 }
