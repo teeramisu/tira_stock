@@ -355,6 +355,30 @@ data/macro/exports/macro_provinces_latest.csv
 - 看板顶部“数据截至”是所有指标的最大日期，**具体指标以表格行内日期为准**。
 - 分省数据来自国家统计局新版 API（`data.stats.gov.cn/dg/...`），部分指标或省份尚未发布时，省级图表/表格只展示有数据的地区；GDP 总量与实际增速覆盖 31 省。
 
+## CI（分层验证）
+
+推 PR 会自动跑 `.github/workflows/ci.yml`，分支保护只需勾选一个 **`CI 汇总`**。
+
+```bash
+# 本地跑与 CI 完全相同的检查（约 40 秒）
+scripts/ci/verify.sh
+```
+
+| 层 | 内容 | 阻断 |
+|---|---|---|
+| 静态 | ruff（未定义名/语法错）、lint 债务 ratchet、仓库卫生、密钥扫描、分层边界 | ✅ |
+| 测试 | 4 个并行分片：macro-discovery / engine / portfolio / marketdata | ✅ |
+| 前端 | `node --check` + 内联脚本 + 资源引用存在性 | ✅ |
+| 元信息 | PR 标题 Conventional Commits、描述长度 | ✅ |
+| Nightly | 全量（含 network/integration）、xfail 漂移、`pip-audit`、lint 周报 | 仅可见 |
+
+- 依赖本地 `data/` 的测试打了 `requires_data` 标记，CI 干净 checkout 自动 skip，
+  不会因为「没有 11GB 行情库」而变红。
+- 历史 lint 债务用 ratchet 管理：`ci/lint-baseline.json` 只允许下降。
+- 已知失败用 `@pytest.mark.xfail`，Nightly 用 `--runxfail` 每天还原真实状态。
+
+设计细节与「如何新增一条检查」见 [docs/ci.md](docs/ci.md)。
+
 ## 回测逻辑（可验证）
 
 - 使用**前一日**的均线信号，**当日收盘**成交，避免未来数据。

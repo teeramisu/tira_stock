@@ -1,0 +1,105 @@
+name: Nightly
+
+# 夜间全量：跑 CI 里为了速度而跳过的部分，并且盯住「已知失败」是否已经修好。
+# 这里的失败不一定阻断合并，但必须每天可见——否则 xfail 会变成垃圾场。
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # UTC 18:00 = 北京时间 02:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  full-suite:
+    name: 全量测试（含 network / integration）
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true   # 外部数据源抖动不应天天报警，但要留下记录
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - name: 全量（仅排除 performance）
+        run: python -m pytest backend/tests -q -m "not performance" --durations=15 -p no:cacheprovider
+
+  known-failures:
+    name: 已知失败漂移检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - name: 用 --runxfail 还原真实状态
+        run: |
+          set +e
+          python -m pytest backend/tests -q --runxfail -p no:cacheprovider 2>&1 | tee /tmp/runxfail.log
+          status=${PIPESTATUS[0]}
+          if [[ $status -ne 0 ]]; then
+            {
+              echo "### ⚠️ 仍有已知失败（xfail 掩盖中）"
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/runxfail.log | head -40 || true
+              echo '```'
+              echo "处理方式：修掉 → 删掉对应 @pytest.mark.xfail；或更新 reason 说明为什么仍待修。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ✅ 已知失败全部通过，可以移除 xfail 标记" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
+  dependency-audit:
+    name: 依赖漏洞审计
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install pip-audit
+      - name: pip-audit（报告形式，不阻塞）
+        run: pip-audit -r requirements-ci.txt --progress-spinner off || true
+
+  lint-debt:
+    name: Lint 债务周报
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - name: Ratchet 校验
+        run: python scripts/ci/lint_ratchet.py
+      - name: 全规则统计（写进 Summary）
+        run: |
+          {
+            echo "### 当前 lint 债务"
+            echo '```'
+            python -m ruff check backend scripts --statistics || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

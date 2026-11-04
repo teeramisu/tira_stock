@@ -4,7 +4,11 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+pytestmark = pytest.mark.requires_data
 
 from services.strategy_library import (
     get_strategy_library_facets,
