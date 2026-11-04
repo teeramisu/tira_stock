@@ -8,6 +8,14 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from backtest.engine import run_sma_crossover, run_backtest, STRATEGY_BUY_HOLD
+from backtest.imported_strategies import (
+    STRATEGY_JQ_BBI_MOMENTUM,
+    STRATEGY_JQ_RSRS_TIMING,
+    STRATEGY_JQ_RSI_GAP_REVERSAL,
+    STRATEGY_JQ_VALUE_MA_RSI_TIMING,
+    STRATEGY_JQ_ETF_MA_CROSS,
+    list_adapted_strategies,
+)
 
 
 def test_sma_crossover_known_data():
@@ -73,9 +81,50 @@ def test_run_backtest_buy_hold():
     assert res.total_return == 0.2
 
 
+def test_imported_joinquant_strategies_are_registered():
+    strategies = list_adapted_strategies()
+    ids = {s["id"] for s in strategies}
+    assert STRATEGY_JQ_BBI_MOMENTUM in ids
+    assert STRATEGY_JQ_RSRS_TIMING in ids
+    assert STRATEGY_JQ_RSI_GAP_REVERSAL in ids
+    assert STRATEGY_JQ_VALUE_MA_RSI_TIMING in ids
+    assert STRATEGY_JQ_ETF_MA_CROSS in ids
+    assert all(s["source_strategy_id"].startswith("jq-") for s in strategies)
+    assert all("reproducible_scope" in s and s["reproducible_scope"] for s in strategies)
+    assert all("non_reproducible_diff" in s and s["non_reproducible_diff"] for s in strategies)
+
+
+def test_imported_joinquant_strategies_run_on_ohlcv():
+    n = 220
+    dates = pd.date_range("2020-01-01", periods=n, freq="B")
+    base = 100 + np.linspace(0, 30, n) + np.sin(np.linspace(0, 18, n)) * 4
+    df = pd.DataFrame(
+        {
+            "Open": base * 0.995,
+            "High": base * 1.02,
+            "Low": base * 0.98,
+            "Close": base,
+            "Volume": np.full(n, 1_000_000),
+        },
+        index=dates,
+    )
+    for strategy in (
+        STRATEGY_JQ_BBI_MOMENTUM,
+        STRATEGY_JQ_RSRS_TIMING,
+        STRATEGY_JQ_RSI_GAP_REVERSAL,
+        STRATEGY_JQ_VALUE_MA_RSI_TIMING,
+        STRATEGY_JQ_ETF_MA_CROSS,
+    ):
+        res = run_backtest(df, strategy, initial_cash=100_000.0)
+        assert len(res.equity_curve) == n
+        assert res.final_value > 0
+
+
 if __name__ == "__main__":
     test_sma_crossover_known_data()
     test_sma_crossover_all_cash()
     test_sma_crossover_one_round_trip()
     test_run_backtest_buy_hold()
+    test_imported_joinquant_strategies_are_registered()
+    test_imported_joinquant_strategies_run_on_ohlcv()
     print("All engine tests passed.")

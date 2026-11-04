@@ -1,0 +1,5 @@
+market,symbol,name,exchange,list_date,is_st,is_active
+cn,AAA,Alpha,SSE,2020-01-01,false,true
+cn,BBB,Beta,SZSE,2020-01-01,false,true
+cn,CCC,Gamma,BSE,2020-01-01,false,true
+

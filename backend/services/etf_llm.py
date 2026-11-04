@@ -9,6 +9,7 @@ from typing import Any, Optional
 _PROXY_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
 
 from .data import fetch_ohlcv
+from . import llm_client
 from backtest.engine import run_backtest, STRATEGY_BUY_HOLD
 
 # 懒加载的 pipeline，首次调用时加载
@@ -122,13 +123,10 @@ def _parse_score_and_reason(text: str) -> tuple[int, str]:
 
 def run_llm_score(symbol: str, summary: dict[str, Any]) -> dict[str, Any]:
     """
-    用 Falcon-H1R-7B 根据 summary 生成 0-100 分与理由。
+    根据 summary 生成 0-100 分与理由。
+    优先使用 DeepSeek API，回退本地 Falcon 模型。
     返回 {"score": int, "reason": str}，失败则抛出或返回默认。
     """
-    pipe, err = _load_pipeline()
-    if err or pipe is None:
-        raise RuntimeError(f"大模型未就绪: {err or '加载失败'}")
-
     prompt = (
         "You are an ETF analyst. Based on the following 5-year buy-and-hold statistics, "
         "give a single score from 0 to 100 (higher = better long-term hold) and a short reason in English.\n\n"
@@ -141,6 +139,28 @@ def run_llm_score(symbol: str, summary: dict[str, Any]) -> dict[str, Any]:
         f"Max drawdown: {summary.get('max_drawdown_pct')}%\n\n"
         "Reply with exactly two lines:\nSCORE: <number 0-100>\nREASON: <one or two sentences>"
     )
+
+    # ── 优先 DeepSeek API ──
+    if llm_client.is_api_available():
+        try:
+            text = llm_client.chat_completion(
+                prompt,
+                max_tokens=MAX_NEW_TOKENS,
+                system="You are a quantitative ETF analyst. Be concise and data-driven.",
+            )
+            score, reason = _parse_score_and_reason(text)
+            return {"score": score, "reason": reason}
+        except Exception as e:
+            # API 调用失败，尝试回退本地模型
+            import logging
+            logging.getLogger(__name__).warning("DeepSeek API 调用失败，尝试回退本地模型: %s", e)
+
+    # ── 回退本地 Falcon 模型 ──
+    pipe, err = _load_pipeline()
+    if err or pipe is None:
+        if llm_client.is_api_available():
+            raise RuntimeError(f"DeepSeek API 和本地模型均不可用。API 错误已记录，本地模型: {err or '加载失败'}")
+        raise RuntimeError(f"大模型未就绪: {err or '加载失败'}")
 
     try:
         tok = pipe.tokenizer

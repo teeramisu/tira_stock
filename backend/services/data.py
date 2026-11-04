@@ -25,7 +25,7 @@ import logging
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -77,12 +77,184 @@ MARKET_US = "us"
 MARKET_CN = "cn"
 MARKET_HK = "hk"
 
+_PERIOD_BARS = {
+    "6mo": 126,
+    "1y": 252,
+    "2y": 504,
+    "5y": 1260,
+    "10y": 2520,
+}
+
+
+def _period_to_bars(period: Optional[str]) -> int:
+    """Map yfinance-style period to approximate trading-day count."""
+    return _PERIOD_BARS.get((period or "1y").strip().lower(), 252)
+
+
+def _normalize_local_symbol(symbol: str, market: str) -> str:
+    """Normalize user symbol for local DuckDB daily_bars lookup."""
+    s = (symbol or "").strip()
+    m = (market or MARKET_US).strip().lower()
+    if m == MARKET_US:
+        return s.upper()
+    if m == MARKET_CN:
+        digits = re.sub(r"\D", "", s)
+        if not digits:
+            raise ValueError("A股代码需为数字，如 600519、000001")
+        return digits.zfill(6)
+    return s.upper()
+
+
+def _local_db_bars_to_ohlcv(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Convert repository daily_bars frame to fetch_ohlcv-style OHLCV."""
+    frame = df[df["symbol"] == symbol].copy()
+    if frame.empty:
+        return frame
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"])
+    frame = frame.set_index("trade_date").sort_index()
+    return frame[["Open", "High", "Low", "Close", "Volume"]].copy()
+
+
+def _fetch_ohlcv_local_db(
+    symbol: str,
+    *,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    period: Optional[str] = "1y",
+    market: Optional[str] = "us",
+) -> Optional[pd.DataFrame]:
+    """Read OHLCV from local DuckDB when available (us/cn)."""
+    market_norm = (market or MARKET_US).strip().lower()
+    if market_norm not in {MARKET_US, MARKET_CN}:
+        return None
+    try:
+        from marketdata.db import DEFAULT_MARKET_DB_PATH, connect as connect_market_db
+        from marketdata.repository import MarketDataRepository
+    except ImportError:
+        return None
+
+    db_path = Path(os.environ.get("MARKET_DATA_DB_PATH", str(DEFAULT_MARKET_DB_PATH)))
+    if not db_path.is_file():
+        return None
+
+    try:
+        local_symbol = _normalize_local_symbol(symbol, market_norm)
+        repo = MarketDataRepository(connect_market_db(db_path))
+        if start and end:
+            df = repo.read_daily_bars(
+                market=market_norm,
+                symbols=[local_symbol],
+                start=date.fromisoformat(start),
+                end=date.fromisoformat(end),
+            )
+        else:
+            df = repo.read_daily_bars_tail(
+                market=market_norm,
+                symbols=[local_symbol],
+                end=date.today(),
+                bars=_period_to_bars(period),
+            )
+        out = _local_db_bars_to_ohlcv(df, local_symbol)
+        if out is None or out.empty:
+            return None
+        return out
+    except Exception as exc:
+        # DuckDB 被其他进程占用（IOException 不是 OSError 子类）、表缺失、代码不存在等，
+        # 统一降级到在线数据源，避免回测接口直接 400。
+        if _DEBUG_OHLCV:
+            _log.warning("[OHLCV] local_db unavailable %s (%s): %s", symbol, market_norm, exc)
+        return None
+
+
+def _daily_bars_to_ohlcv(bars) -> Optional[pd.DataFrame]:
+    """把 marketdata DailyBar 列表转换为 fetch_ohlcv 风格 DataFrame。"""
+    if not bars:
+        return None
+    rows = [
+        {
+            "Date": b.trade_date,
+            "Open": b.open,
+            "High": b.high,
+            "Low": b.low,
+            "Close": b.close,
+            "Volume": b.volume or 0,
+        }
+        for b in bars
+    ]
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return None
+    df["Date"] = pd.to_datetime(df["Date"])
+    return df.set_index("Date").sort_index()
+
+
+def _fetch_ohlcv_from_akshare(
+    symbol: str,
+    *,
+    market: str,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    period: Optional[str] = "1y",
+) -> Optional[pd.DataFrame]:
+    """本地 DuckDB 不可用（被刷新进程锁定/缺失）时的在线兜底（A股/美股）。"""
+    market_norm = (market or MARKET_US).strip().lower()
+    if market_norm not in {MARKET_CN, MARKET_US}:
+        return None
+    try:
+        from marketdata.sources.akshare_source import load_cn_daily_bars_for_symbol
+        from marketdata.sources.yfinance_source import load_us_daily_bars
+    except ImportError:
+        return None
+
+    end_d = date.fromisoformat(end) if end else date.today()
+    if start:
+        start_d = date.fromisoformat(start)
+    else:
+        start_d = end_d - timedelta(days=int(_period_to_bars(period) * 1.7) + 15)
+
+    try:
+        if market_norm == MARKET_CN:
+            local_symbol = _normalize_local_symbol(symbol, MARKET_CN)
+            # 东财单次最多返回约 500 根，长区间需要向前分页
+            bars = []
+            seen = set()
+            cursor_end = end_d
+            for _ in range(12):
+                chunk = load_cn_daily_bars_for_symbol(local_symbol, start_d, cursor_end)
+                if not chunk:
+                    break
+                for b in chunk:
+                    if b.trade_date not in seen:
+                        seen.add(b.trade_date)
+                        bars.append(b)
+                earliest = min(b.trade_date for b in chunk)
+                if earliest <= start_d or len(chunk) < 490:
+                    break
+                next_end = earliest - timedelta(days=1)
+                if next_end >= cursor_end:
+                    break
+                cursor_end = next_end
+            bars.sort(key=lambda b: b.trade_date)
+        else:
+            bars = load_us_daily_bars(
+                [symbol.strip().upper()], start_d, end_d, provider="akshare"
+            )
+        out = _daily_bars_to_ohlcv(bars)
+        if out is not None and not out.empty:
+            if _DEBUG_OHLCV:
+                _log.info("[OHLCV] akshare fallback OK %s (%s) rows=%d", symbol, market_norm, len(out))
+            return out
+    except Exception as exc:
+        if _DEBUG_OHLCV:
+            _log.warning("[OHLCV] akshare fallback FAIL %s (%s): %s", symbol, market_norm, exc)
+    return None
+
 
 def to_yfinance_ticker(symbol: str, market: str) -> str:
     """
     将 代码+市场 转为 yfinance 使用的 ticker。
     - 美股(us): 原样，如 AAPL
-    - A股(cn): 沪 6/5/9 开头 -> .SS，深 0/3 开头 -> .SZ，如 600519.SS、000001.SZ
+    - A股(cn): 沪 6/5/9 开头 -> .SS，深 0/3/159/16 开头 -> .SZ，如 600519.SS、510300.SS、159915.SZ
     - 港股(hk): 后缀 .HK，如 0700.HK、9988.HK
     """
     s = (symbol or "").strip().upper()
@@ -101,12 +273,24 @@ def to_yfinance_ticker(symbol: str, market: str) -> str:
         digits = re.sub(r"\D", "", s)
         if not digits:
             raise ValueError("A股代码需为数字，如 600519、000001")
-        first = digits[0]
-        if first in "69":
-            return digits + ".SS"
-        if first in "03":
-            return digits + ".SZ"
-        raise ValueError("A股代码：沪市 6/9 开头，深市 0/3 开头，如 600519、000001")
+        normalized = digits.zfill(6)
+        try:
+            from marketdata.sources.akshare_source import is_cn_etf_symbol
+
+            if is_cn_etf_symbol(normalized):
+                if normalized.startswith(("5", "6", "9")):
+                    return normalized + ".SS"
+                return normalized + ".SZ"
+        except ImportError:
+            pass
+        first = normalized[0]
+        if first in "569":
+            return normalized + ".SS"
+        if first in "03" or normalized.startswith(("159", "16")):
+            return normalized + ".SZ"
+        raise ValueError(
+            "A股代码：沪市 5/6/9 开头，深市 0/3/159/16 开头，如 600519、510300、159915"
+        )
     return s
 
 
@@ -178,7 +362,51 @@ def fetch_ohlcv(
     except ImportError:
         raise RuntimeError("请安装 yfinance: pip install yfinance")
 
-    ticker = to_yfinance_ticker(symbol, market or MARKET_US)
+    market_norm = market or MARKET_US
+    local_db_stale = False  # 标记本地数据是否过旧
+
+    # ---------- 1. 本地行情库：us/cn 优先读 DuckDB（需在 ticker 转换前，以支持 ETF 代码） ----------
+    local_df = _fetch_ohlcv_local_db(symbol, start=start, end=end, period=period, market=market_norm)
+    if local_df is not None and not local_df.empty:
+        out = _normalize_ohlcv_columns(local_df)
+        if out is not None and not out.empty and "Close" in out.columns:
+            # 检查数据新鲜度：如果最新数据超过 7 天，回退到 yfinance
+            latest_date = out.index.max()
+            if hasattr(latest_date, 'date'):
+                latest_date_val = latest_date.date() if callable(latest_date.date) else latest_date
+            else:
+                from datetime import datetime as _dt
+                latest_date_val = _dt.strptime(str(latest_date)[:10], "%Y-%m-%d").date()
+            days_stale = (date.today() - latest_date_val).days
+            if days_stale > 7:
+                local_db_stale = True
+                if _DEBUG_OHLCV:
+                    _log.info("[OHLCV] local_db STALE %s: latest=%s (%d days old), falling back to yfinance", symbol, latest_date_val, days_stale)
+            else:
+                ticker = to_yfinance_ticker(symbol, market_norm)
+                cache_key: Tuple[str, Optional[str], Optional[str], Optional[str]] = (ticker, start, end, period)
+                if _DEBUG_OHLCV:
+                    _log.info("[OHLCV] local_db HIT %s market=%s rows=%d", symbol, market_norm, len(out))
+                with _cache_lock:
+                    _ohlcv_cache[cache_key] = (out.copy(), time.monotonic() + _CACHE_TTL)
+                _save_disk_cache(cache_key, out)
+                return out.sort_index()
+
+    # ---------- 1.5 本地库不可用/过旧：A股改用 akshare 在线兜底，避免刷新期间回测失败 ----------
+    if market_norm == MARKET_CN and (local_df is None or local_df.empty or local_db_stale):
+        cn_df = _fetch_ohlcv_from_akshare(
+            symbol, market=market_norm, start=start, end=end, period=period
+        )
+        if cn_df is not None and not cn_df.empty:
+            cn_df = _normalize_ohlcv_columns(cn_df)
+            ticker = to_yfinance_ticker(symbol, market_norm)
+            cache_key = (ticker, start, end, period)
+            with _cache_lock:
+                _ohlcv_cache[cache_key] = (cn_df.copy(), time.monotonic() + _CACHE_TTL)
+            _save_disk_cache(cache_key, cn_df)
+            return cn_df.sort_index()
+
+    ticker = to_yfinance_ticker(symbol, market_norm)
     cache_key: Tuple[str, Optional[str], Optional[str], Optional[str]] = (ticker, start, end, period)
 
     # ---------- 1. 内存缓存：命中则直接返回，不访问 Yahoo ----------
@@ -191,14 +419,15 @@ def fetch_ohlcv(
                 return cached_df.copy()
             del _ohlcv_cache[cache_key]
 
-    # ---------- 2. 磁盘缓存：同一天内写入的同一请求直接读盘 ----------
-    disk_df = _load_disk_cache_if_today(cache_key)
-    if disk_df is not None:
-        if _DEBUG_OHLCV:
-            _log.info("[OHLCV] disk_cache HIT %s", cache_key)
-        with _cache_lock:
-            _ohlcv_cache[cache_key] = (disk_df.copy(), time.monotonic() + _CACHE_TTL)
-        return disk_df.copy()
+    # ---------- 2. 磁盘缓存：同一天内写入的同一请求直接读盘（本地数据过旧时跳过） ----------
+    if not local_db_stale:
+        disk_df = _load_disk_cache_if_today(cache_key)
+        if disk_df is not None:
+            if _DEBUG_OHLCV:
+                _log.info("[OHLCV] disk_cache HIT %s", cache_key)
+            with _cache_lock:
+                _ohlcv_cache[cache_key] = (disk_df.copy(), time.monotonic() + _CACHE_TTL)
+            return disk_df.copy()
 
     data = None
     last_err: Optional[Exception] = None
@@ -321,6 +550,16 @@ def fetch_ohlcv(
                             break
                 except Exception:
                     continue
+
+    # ---------- 5.5 仍失败：美股用 akshare 兜底（本地库被刷新进程占用或 Yahoo 限流时） ----------
+    if (data is None or data.empty) and (market or MARKET_US) == MARKET_US:
+        us_df = _fetch_ohlcv_from_akshare(
+            symbol, market=MARKET_US, start=start, end=end, period=period
+        )
+        if us_df is not None and not us_df.empty:
+            data = _normalize_ohlcv_columns(us_df)
+            if _DEBUG_OHLCV:
+                _log.info("[OHLCV] akshare fallback OK ticker=%s", ticker)
 
     # ---------- 6. 仍无数据：可能被限流或网络问题，抛错便于上层提示 ----------
     if data is None or data.empty:

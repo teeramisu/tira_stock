@@ -3,10 +3,17 @@
 """
 from __future__ import annotations
 
+import inspect
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import List, Optional, Any, Dict
+
+from .imported_strategies import (
+    get_adapted_strategy,
+    get_adapted_strategy_signal,
+    list_adapted_strategies,
+)
 
 # 策略标识，与 API 一致
 STRATEGY_SMA = "sma_crossover"
@@ -27,6 +34,7 @@ class Trade:
     shares: float
     pnl: float
     pnl_pct: float
+    is_open: bool = False  # True = 尚未平仓的持仓
 
 
 @dataclass
@@ -44,10 +52,17 @@ class BacktestResult:
     win_rate: float = 0.0
     initial_value: float = 0.0
     final_value: float = 0.0
+    open_position: Optional[dict] = None  # 回测结束时的未平仓持仓信息
+
+
+_OHLCV_COLS = frozenset({"Open", "High", "Low", "Close", "Volume"})
 
 
 def _ensure_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
-    """统一列名：Open/High/Low/Close/Volume"""
+    """统一列名：Open/High/Low/Close/Volume。已标准化则直接返回（不复制）。"""
+    if _OHLCV_COLS.issubset(df.columns) and df.index.name is None or pd.api.types.is_datetime64_any_dtype(df.index):
+        if _OHLCV_COLS.issubset(df.columns):
+            return df  # 已标准化，跳过复制
     df = df.copy()
     if df.index.name is None and "Date" in df.columns:
         df = df.set_index("Date")
@@ -133,6 +148,19 @@ def _run_from_position(
         prev_pos = pos
 
     equity_series = pd.Series(equity_curve, index=pd.to_datetime(dates))
+
+    # 检查是否有未平仓交易（最后一笔买入后未卖出）
+    open_position = None
+    if trades and (isinstance(trades[-1].get("pnl"), float) and np.isnan(trades[-1]["pnl"])):
+        ot = trades[-1]
+        open_position = {
+            "entry_date": ot["entry_date"],
+            "entry_price": ot["entry_price"],
+            "shares": ot["shares"],
+            "current_price": float(close.iloc[-1]),
+            "unrealized_pnl": round((float(close.iloc[-1]) - ot["entry_price"]) * ot["shares"], 2),
+        }
+
     trade_list = [
         Trade(
             entry_date=t["entry_date"],
@@ -142,8 +170,9 @@ def _run_from_position(
             shares=t["shares"],
             pnl=t["pnl"],
             pnl_pct=t["pnl_pct"],
+            is_open=(isinstance(t.get("pnl"), float) and np.isnan(t["pnl"])),
         )
-        for t in trades if not (isinstance(t.get("pnl"), float) and np.isnan(t["pnl"]))
+        for t in trades
     ]
 
     final_value = equity_curve[-1] if equity_curve else initial_cash
@@ -167,8 +196,9 @@ def _run_from_position(
         max_drawdown = 0.0
         max_drawdown_duration = 0
 
-    n_trades = len(trade_list)
-    wins = sum(1 for t in trade_list if t.pnl > 0)
+    completed_trades = [t for t in trade_list if not t.is_open]
+    n_trades = len(completed_trades)
+    wins = sum(1 for t in completed_trades if t.pnl > 0)
     win_rate = (wins / n_trades * 100) if n_trades else 0.0
 
     return BacktestResult(
@@ -184,6 +214,7 @@ def _run_from_position(
         win_rate=round(win_rate, 2),
         initial_value=initial_cash,
         final_value=round(final_value, 2),
+        open_position=open_position,
     )
 
 
@@ -217,22 +248,11 @@ def _rsi_signal(close: pd.Series, period: int = 14, oversold: float = 30, overbo
     rsi = 100 - (100 / (1 + rs))
     rsi = rsi.fillna(50)
     prev_rsi = rsi.shift(1)
-    # 状态：进入超卖区买入，进入超买区卖出，否则保持
-    position = pd.Series(0.0, index=close.index)
-    pos = 0
-    for i in range(len(close)):
-        if i == 0:
-            position.iloc[i] = 0
-            continue
-        r = prev_rsi.iloc[i]
-        if np.isnan(r):
-            position.iloc[i] = pos
-            continue
-        if r < oversold:
-            pos = 1
-        elif r > overbought:
-            pos = 0
-        position.iloc[i] = pos
+    # 向量化状态机：用 NaN + ffill 替代 for-loop
+    position = pd.Series(np.nan, index=close.index)
+    position[prev_rsi < oversold] = 1.0   # 超卖买入
+    position[prev_rsi > overbought] = 0.0  # 超买卖出
+    position = position.ffill().fillna(0.0)
     return position
 
 
@@ -263,20 +283,13 @@ def _bollinger_signal(
     prev_close = close.shift(1)
     prev_lower = lower.shift(1)
     prev_upper = upper.shift(1)
-    position = pd.Series(0.0, index=close.index)
-    pos = 0
-    for i in range(len(close)):
-        if i == 0:
-            continue
-        c, lo, hi = prev_close.iloc[i], prev_lower.iloc[i], prev_upper.iloc[i]
-        if np.isnan(lo) or np.isnan(hi):
-            position.iloc[i] = pos
-            continue
-        if c <= lo:
-            pos = 1
-        elif c >= hi:
-            pos = 0
-        position.iloc[i] = pos
+    # 向量化状态机：用 NaN + ffill 替代 for-loop
+    position = pd.Series(np.nan, index=close.index)
+    buy_mask = prev_close <= prev_lower
+    sell_mask = prev_close >= prev_upper
+    position[buy_mask] = 1.0
+    position[sell_mask] = 0.0
+    position = position.ffill().fillna(0.0)
     return position
 
 
@@ -373,6 +386,17 @@ def run_buy_hold(
     return _run_from_position(df, position, initial_cash, commission_rate)
 
 
+def _filter_signal_params(signal_fn: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Keep only keyword args accepted by an adapted strategy signal function."""
+    sig = inspect.signature(signal_fn)
+    allowed = {
+        name
+        for name, param in sig.parameters.items()
+        if name != "df" and param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY)
+    }
+    return {key: value for key, value in params.items() if key in allowed and value is not None}
+
+
 def run_backtest(
     df: pd.DataFrame,
     strategy: str,
@@ -429,6 +453,13 @@ def run_backtest(
         )
     if strategy == STRATEGY_BUY_HOLD:
         return run_buy_hold(df, initial_cash=initial_cash, commission_rate=commission_rate)
+    adapted_signal = get_adapted_strategy_signal(strategy)
+    if adapted_signal is not None:
+        df = _ensure_ohlcv(df)
+        defaults = get_adapted_strategy(strategy).get("default_params", {})
+        signal_params = _filter_signal_params(adapted_signal, {**defaults, **params})
+        position = adapted_signal(df, **signal_params)
+        return _run_from_position(df, position, initial_cash, commission_rate)
     raise ValueError(f"不支持的策略: {strategy}")
 
 
@@ -440,4 +471,5 @@ STRATEGIES = [
     {"id": STRATEGY_MACD, "name": "MACD 金叉死叉", "params": ["fast", "slow", "signal_period"]},
     {"id": STRATEGY_BOLLINGER, "name": "布林带", "params": ["period", "num_std"]},
     {"id": STRATEGY_BUY_HOLD, "name": "买入持有", "params": []},
+    *list_adapted_strategies(),
 ]

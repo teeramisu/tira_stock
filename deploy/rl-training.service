@@ -1,0 +1,43 @@
+[Unit]
+Description=RL-MACS Autonomous Training Daemon
+Documentation=https://github.com/tira/stock_backtest
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tira
+Group=tira
+WorkingDirectory=/home/tira/code/stock_backtest
+
+# Main process
+ExecStart=/home/tira/anaconda3/bin/python -m backend.rl.daemon
+
+# Environment
+Environment=RL_DB_PATH=/home/tira/code/stock_backtest/data/market/market_data_train.duckdb
+Environment=PYTHONUNBUFFERED=1
+
+# Restart policy
+Restart=always
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=read-only
+ReadWritePaths=/home/tira/code/stock_backtest
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rl-training
+
+[Install]
+WantedBy=multi-user.target
