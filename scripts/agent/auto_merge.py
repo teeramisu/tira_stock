@@ -40,11 +40,23 @@ mutation($id: ID!) {
 
 
 def token() -> str:
-    value = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if not value:
-        print("❌ 缺少 GITHUB_TOKEN")
-        raise SystemExit(2)
-    return value
+    """优先使用 agent 专用 token。
+
+    身份分离是本仓库门禁的前提：
+      - AGENT_GITHUB_TOKEN：只给 Contents + Pull requests，不能贴标签、
+        不能改 ruleset，用于所有自动化操作；
+      - GITHUB_TOKEN：人的身份，用于贴 allow-guard-change / large-pr 等标签。
+
+    两个都没配时才报错。见 docs/agent-token.md。
+    """
+    for key in ("AGENT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+        value = os.environ.get(key)
+        if value:
+            if key != "AGENT_GITHUB_TOKEN":
+                print(f"⚠️  未设置 AGENT_GITHUB_TOKEN，回退到 {key}（身份未分离）")
+            return value
+    print("❌ 缺少 AGENT_GITHUB_TOKEN / GITHUB_TOKEN")
+    raise SystemExit(2)
 
 
 def session() -> requests.Session:
