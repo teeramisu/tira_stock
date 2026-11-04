@@ -39,12 +39,11 @@ def main() -> int:
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")
     parser.add_argument("--body-file", default="")
-    parser.add_argument("--labels", default="")
+    parser.add_argument("--labels", default="", help="预留：将来按标签跳过某些检查")
     args = parser.parse_args()
 
     body = Path(args.body_file).read_text(encoding="utf-8") if args.body_file else args.body
     body = body or ""
-    labels = {label.strip() for label in args.labels.split(",") if label.strip()}
 
     problems: list[str] = []
     warnings: list[str] = []
