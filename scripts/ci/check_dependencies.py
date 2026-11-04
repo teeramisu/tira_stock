@@ -56,7 +56,7 @@ def run_audit(requirements: Path) -> list[dict]:
         return json.loads(report.read_text(encoding="utf-8")).get("dependencies", [])
     except (json.JSONDecodeError, OSError) as exc:
         print(f"❌ 无法解析 pip-audit 输出：{exc}")
-        raise SystemExit(2)
+        raise SystemExit(2) from exc
     finally:
         report.unlink(missing_ok=True)
 
