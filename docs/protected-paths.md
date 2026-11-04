@@ -50,6 +50,32 @@ steps:
 
 命中 → 失败，除非 PR 有 `allow-guard-change` 标签。
 
+### 例外：纯新增的测试改动自动放行
+
+```json
+{ "allow_pure_additions": ["backend/tests/"] }
+```
+
+判定条件（三者同时满足）：
+
+| 条件 | 含义 |
+|---|---|
+| 路径命中 `allow_pure_additions` | 目前只有 `backend/tests/` |
+| `deletions == 0` | 没有删除行 |
+| `additions > 0` | 确实有新内容 |
+
+理由：**新增测试无法削弱既有断言**。要作弊必须删掉或改写断言，
+而那一定伴随 `deletions > 0`，仍然会被拦。
+
+效果对照：
+
+| 改动 | 结果 |
+|---|---|
+| `test_macro.py` 追加 30 行用例 | ✅ 自动放行 |
+| `test_macro.py` 删 5 行改 3 行 | ❌ 需要标签 |
+| `scripts/ci/verify.sh` 即使只加不清 | ❌ 需要标签（改的是判分逻辑本身） |
+| 新增测试 + 改 `requirements-ci.txt` | ❌ 需要标签（依赖变更） |
+
 ## 三、为什么用标签而不是 CODEOWNERS
 
 GitHub 的 `Require review from Code Owners` 在有协作者时是最优解。但本仓库是个人仓库：
