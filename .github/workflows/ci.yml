@@ -161,47 +161,68 @@ jobs:
           python scripts/ci/check_commits.py \
             --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
-  # ---------------------------------------------------------------- 5. PR 元信息
+  # ---------------------------------------------------------------- 5. PR 门禁
   pr-meta:
     name: PR 元信息
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: 标题遵循 Conventional Commits
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 标题 + 描述结构 + 回退说明
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          set -euo pipefail
-          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._-]+\))?!?: .{4,}$'
-          if ! [[ "$TITLE" =~ $pattern ]]; then
-            echo "❌ PR 标题不符合 Conventional Commits：$TITLE"
-            echo "   例：feat(macro): 增加省级变化对比"
-            exit 1
-          fi
-          if [[ "$TITLE" =~ ^(WIP|wip|fixup) ]]; then
-            echo "❌ 草稿 PR 请用 draft 状态，而不是 WIP 标题"
-            exit 1
-          fi
-      - name: 描述非空且有结构
-        env:
           BODY: ${{ github.event.pull_request.body }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: python scripts/ci/check_pr_meta.py --title "$TITLE" --body "$BODY" --labels "$LABELS"
+
+  pr-scope:
+    name: PR 范围（一件事）
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 功能区跨度
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
-          set -euo pipefail
-          chars=${#BODY}
-          echo "描述长度: $chars"
-          if [[ $chars -lt 80 ]]; then
-            echo "❌ PR 描述太短（<80 字符），请说明改动与验证方式"
-            exit 1
-          fi
-          if ! grep -qE '^##+ ' <<< "$BODY"; then
-            echo "⚠️  建议用 '## 改动' / '## 验证' 之类的小标题组织描述"
-          fi
+          python scripts/ci/check_pr_scope.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$LABELS"
+
+  pr-size:
+    name: PR 体量预算
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 文件数与改动行数
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          python scripts/ci/check_pr_size.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$LABELS"
 
   # ---------------------------------------------------------------- 5. 单一闸门
   gate:
     name: CI 汇总
     if: always()
-    needs: [plan, static, tests, frontend, commits, pr-meta]
+    needs: [plan, static, tests, frontend, commits, pr-meta, pr-scope, pr-size]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总各层结果
